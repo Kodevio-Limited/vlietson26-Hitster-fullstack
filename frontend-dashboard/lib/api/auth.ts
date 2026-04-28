@@ -26,13 +26,15 @@ export async function loginWithSpotify(code: string): Promise<{ jwtToken: string
 }
 
 export async function logout(): Promise<void> {
-    // 1. Client-side clear
-    localStorage.removeItem("adminToken");
-    localStorage.removeItem("user");
+    try {
+        // 1. Client-side clear
+        localStorage.removeItem("adminToken");
+        localStorage.removeItem("user");
 
-    // 2. Server-side clear cookie
-    await clearAdminSessionCookie();
-
-    // 3. Server-side redirect
-    await logoutRedirect();
+        // 2. Server-side clear cookie
+        await clearAdminSessionCookie();
+    } catch (error) {
+        console.error("Logout error:", error);
+    }
+    // 3. Handled by the component to avoid Next.js Action redirect errors
 }
