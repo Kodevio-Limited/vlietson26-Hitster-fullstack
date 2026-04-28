@@ -1,0 +1,2445 @@
+src/config/configuration.ts
+typescript
+export default () => ({
+  nodeEnv: process.env.NODE_ENV || 'development',
+  port: parseInt(process.env.PORT, 10) || 3000,
+  apiUrl: process.env.API_URL || 'http://localhost:3000',
+  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:4200',
+  
+  database: {
+    host: process.env.DB_HOST,
+    port: parseInt(process.env.DB_PORT, 10) || 5432,
+    username: process.env.DB_USERNAME,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_DATABASE,
+    url: process.env.DATABASE_URL,
+  },
+  
+  spotify: {
+    clientId: process.env.SPOTIFY_CLIENT_ID,
+    clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+    redirectUri: process.env.SPOTIFY_REDIRECT_URI,
+  },
+  
+  jwt: {
+    secret: process.env.JWT_SECRET,
+    expiresIn: process.env.JWT_EXPIRES_IN,
+  },
+  
+  qrCode: {
+    size: parseInt(process.env.QR_CODE_SIZE, 10) || 300,
+    margin: parseInt(process.env.QR_CODE_MARGIN, 10) || 2,
+  },
+  
+  throttle: {
+    ttl: parseInt(process.env.THROTTLE_TTL, 10) || 60,
+    limit: parseInt(process.env.THROTTLE_LIMIT, 10) || 100,
+  },
+});
+src/config/validation.ts
+typescript
+import { plainToClass } from 'class-transformer';
+import { IsString, IsNumber, IsOptional, validateSync } from 'class-validator';
+
+class EnvironmentVariables {
+  @IsString()
+  NODE_ENV: string;
+
+  @IsNumber()
+  PORT: number;
+
+  @IsString()
+  DB_HOST: string;
+
+  @IsNumber()
+  DB_PORT: number;
+
+  @IsString()
+  DB_USERNAME: string;
+
+  @IsString()
+  DB_PASSWORD: string;
+
+  @IsString()
+  DB_DATABASE: string;
+
+  @IsString()
+  SPOTIFY_CLIENT_ID: string;
+
+  @IsString()
+  SPOTIFY_CLIENT_SECRET: string;
+
+  @IsString()
+  SPOTIFY_REDIRECT_URI: string;
+
+  @IsString()
+  JWT_SECRET: string;
+
+  @IsString()
+  @IsOptional()
+  JWT_EXPIRES_IN: string;
+}
+
+export function validate(config: Record<string, unknown>) {
+  const validatedConfig = plainToClass(EnvironmentVariables, config, {
+    enableImplicitConversion: true,
+  });
+  
+  const errors = validateSync(validatedConfig, {
+    skipMissingProperties: false,
+  });
+
+  if (errors.length > 0) {
+    throw new Error(errors.toString());
+  }
+  
+  return validatedConfig;
+}
+Main Application Files
+src/main.ts
+typescript
+import { NestFactory } from '@nestjs/core';
+import { ValidationPipe, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { AppModule } from './app.module';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+
+async function bootstrap() {
+  const logger = new Logger('Bootstrap');
+  const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
+
+  // Enable CORS
+  app.enableCors({
+    origin: configService.get('frontendUrl'),
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  });
+
+  // Global prefix
+  app.setGlobalPrefix('api');
+
+  // Global validation pipe
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
+    }),
+  );
+
+  // Global filters and interceptors
+  app.useGlobalFilters(new HttpExceptionFilter());
+  app.useGlobalInterceptors(new LoggingInterceptor());
+
+  // Swagger documentation
+  const config = new DocumentBuilder()
+    .setTitle('Bouwradio API')
+    .setDescription(`
+      ## Spotify Integration API for Bouwradio Project
+      
+      This API provides:
+      - Spotify track search and management
+      - QR code generation for Spotify tracks
+      - QR card management
+      - Mapping between songs and QR codes
+      - User authentication with Spotify
+      
+      ### Authentication
+      Most endpoints require JWT token obtained after Spotify login.
+      Add token to Authorization header: \`Bearer <your_jwt_token>\`
+      
+      ### QR Scanning
+      Public QR redirect endpoint doesn't require authentication.
+    `)
+    .setVersion('1.0')
+    .setContact('Bouwradio Support', 'https://bouwradio.com', 'support@bouwradio.com')
+    .addBearerAuth({
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+      name: 'JWT',
+      description: 'Enter JWT token',
+      in: 'header',
+    })
+    .addTag('Authentication', 'Spotify login and user management')
+    .addTag('Songs', 'Manage songs in database and search Spotify')
+    .addTag('QR Codes', 'Generate and manage QR codes')
+    .addTag('QR Cards', 'Manage physical QR cards')
+    .addTag('Mappings', 'Map songs to QR codes')
+    .addTag('QR Redirect', 'Public endpoint for QR code scanning')
+    .build();
+
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api/docs', app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,
+      docExpansion: 'none',
+      filter: true,
+      showRequestDuration: true,
+    },
+  });
+
+  const port = configService.get('port') || 3000;
+  await app.listen(port);
+  
+  logger.log(`🚀 Application is running on: http://localhost:${port}`);
+  logger.log(`📚 Swagger documentation: http://localhost:${port}/api/docs`);
+  logger.log(`🔐 Environment: ${configService.get('nodeEnv')}`);
+}
+
+bootstrap();
+src/app.module.ts
+typescript
+import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { ThrottlerModule } from '@nestjs/throttler';
+import configuration from './config/configuration';
+import { SongsModule } from './modules/songs/songs.module';
+import { QrCodesModule } from './modules/qr-codes/qr-codes.module';
+import { QrCardsModule } from './modules/qr-cards/qr-cards.module';
+import { MappingsModule } from './modules/mappings/mappings.module';
+import { SpotifyModule } from './modules/spotify/spotify.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { QrRedirectController } from './modules/qr-redirect/qr-redirect.controller';
+import { Song } from './modules/songs/entities/song.entity';
+import { QrCode } from './modules/qr-codes/entities/qr-code.entity';
+import { QrCard } from './modules/qr-cards/entities/qr-card.entity';
+import { Mapping } from './modules/mappings/entities/mapping.entity';
+import { User } from './modules/auth/entities/user.entity';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [configuration],
+    }),
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        type: 'postgres',
+        host: configService.get('database.host'),
+        port: configService.get('database.port'),
+        username: configService.get('database.username'),
+        password: configService.get('database.password'),
+        database: configService.get('database.database'),
+        entities: [Song, QrCode, QrCard, Mapping, User],
+        synchronize: configService.get('nodeEnv') !== 'production',
+        logging: configService.get('nodeEnv') === 'development',
+        ssl: {
+          require: true,
+          rejectUnauthorized: false,
+        },
+        extra: {
+          max: 20,
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 5000,
+        },
+        retryAttempts: 3,
+        retryDelay: 3000,
+      }),
+      inject: [ConfigService],
+    }),
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        throttlers: [
+          {
+            ttl: configService.get('throttle.ttl'),
+            limit: configService.get('throttle.limit'),
+          },
+        ],
+      }),
+      inject: [ConfigService],
+    }),
+    SongsModule,
+    QrCodesModule,
+    QrCardsModule,
+    MappingsModule,
+    SpotifyModule,
+    AuthModule,
+  ],
+  controllers: [QrRedirectController],
+})
+export class AppModule {}
+Common Files
+src/common/decorators/roles.decorator.ts
+typescript
+import { SetMetadata } from '@nestjs/common';
+
+export const ROLES_KEY = 'roles';
+export const Roles = (...roles: string[]) => SetMetadata(ROLES_KEY, roles);
+src/common/guards/jwt-auth.guard.ts
+typescript
+import { Injectable, ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { Reflector } from '@nestjs/core';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+
+@Injectable()
+export class JwtAuthGuard extends AuthGuard('jwt') {
+  constructor(private reflector: Reflector) {
+    super();
+  }
+
+  canActivate(context: ExecutionContext) {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    
+    if (isPublic) {
+      return true;
+    }
+    
+    return super.canActivate(context);
+  }
+
+  handleRequest(err: any, user: any, info: any) {
+    if (err || !user) {
+      throw err || new UnauthorizedException('Invalid or missing authentication token');
+    }
+    return user;
+  }
+}
+src/common/guards/roles.guard.ts
+typescript
+import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { ROLES_KEY } from '../decorators/roles.decorator';
+
+@Injectable()
+export class RolesGuard implements CanActivate {
+  constructor(private reflector: Reflector) {}
+
+  canActivate(context: ExecutionContext): boolean {
+    const requiredRoles = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    
+    if (!requiredRoles) {
+      return true;
+    }
+    
+    const { user } = context.switchToHttp().getRequest();
+    
+    if (!user) {
+      throw new ForbiddenException('User not authenticated');
+    }
+    
+    const hasRole = requiredRoles.some((role) => user.role === role);
+    
+    if (!hasRole) {
+      throw new ForbiddenException(`Required role: ${requiredRoles.join(', ')}`);
+    }
+    
+    return true;
+  }
+}
+src/common/guards/admin.guard.ts
+typescript
+import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+
+@Injectable()
+export class AdminGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest();
+    const user = request.user;
+    
+    if (!user || user.role !== 'admin') {
+      throw new ForbiddenException('Admin access required for this operation');
+    }
+    
+    return true;
+  }
+}
+src/common/interceptors/logging.interceptor.ts
+typescript
+import { Injectable, NestInterceptor, ExecutionContext, CallHandler, Logger } from '@nestjs/common';
+import { Observable } from 'rxjs';
+import { tap } from 'rxjs/operators';
+
+@Injectable()
+export class LoggingInterceptor implements NestInterceptor {
+  private readonly logger = new Logger('HTTP');
+
+  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+    const request = context.switchToHttp().getRequest();
+    const { method, url, ip, user } = request;
+    const userAgent = request.get('user-agent') || '';
+    const startTime = Date.now();
+
+    return next.handle().pipe(
+      tap({
+        next: (data) => {
+          const response = context.switchToHttp().getResponse();
+          const { statusCode } = response;
+          const duration = Date.now() - startTime;
+          
+          this.logger.log(
+            `${method} ${url} ${statusCode} - ${duration}ms - ${userAgent} ${ip} ${
+              user ? `[User: ${user.email}]` : ''
+            }`,
+          );
+        },
+        error: (error) => {
+          const duration = Date.now() - startTime;
+          this.logger.error(
+            `${method} ${url} ${error.status} - ${duration}ms - ${userAgent} ${ip} - Error: ${error.message}`,
+            error.stack,
+          );
+        },
+      }),
+    );
+  }
+}
+src/common/filters/http-exception.filter.ts
+typescript
+import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { Request, Response } from 'express';
+
+@Catch()
+export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger('Exception');
+
+  catch(exception: unknown, host: ArgumentsHost) {
+    const ctx = host.switchToHttp();
+    const response = ctx.getResponse<Response>();
+    const request = ctx.getRequest<Request>();
+    
+    const status = exception instanceof HttpException
+      ? exception.getStatus()
+      : HttpStatus.INTERNAL_SERVER_ERROR;
+    
+    const message = exception instanceof HttpException
+      ? exception.getResponse()
+      : 'Internal server error';
+    
+    const errorResponse = {
+      statusCode: status,
+      timestamp: new Date().toISOString(),
+      path: request.url,
+      method: request.method,
+      message: typeof message === 'string' ? message : (message as any).message || 'An error occurred',
+    };
+    
+    this.logger.error(
+      `${request.method} ${request.url} - Status: ${status} - Error: ${JSON.stringify(errorResponse)}`,
+      exception instanceof Error ? exception.stack : '',
+    );
+    
+    response.status(status).json(errorResponse);
+  }
+}
+Database Configuration
+src/database/data-source.ts
+typescript
+import { DataSource } from 'typeorm';
+import { config } from 'dotenv';
+import { join } from 'path';
+
+config();
+
+export default new DataSource({
+  type: 'postgres',
+  host: process.env.DB_HOST,
+  port: parseInt(process.env.DB_PORT, 10),
+  username: process.env.DB_USERNAME,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_DATABASE,
+  ssl: {
+    require: true,
+    rejectUnauthorized: false,
+  },
+  entities: [join(__dirname, '..', 'modules', '**', '*.entity.{ts,js}')],
+  migrations: [join(__dirname, 'migrations', '*.{ts,js}')],
+  synchronize: false,
+  logging: process.env.NODE_ENV === 'development',
+});
+Auth Module
+src/modules/auth/entities/user.entity.ts
+typescript
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Mapping } from '../../mappings/entities/mapping.entity';
+
+@Entity('users')
+export class User {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ type: 'varchar', length: 255, unique: true })
+  email: string;
+
+  @Column({ type: 'varchar', length: 255, unique: true, nullable: true, name: 'spotify_id' })
+  spotifyId: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true, name: 'display_name' })
+  displayName: string;
+
+  @Column({ type: 'varchar', length: 50, default: 'user' })
+  role: string;
+
+  @Column({ type: 'text', nullable: true, name: 'spotify_access_token' })
+  spotifyAccessToken: string;
+
+  @Column({ type: 'text', nullable: true, name: 'spotify_refresh_token' })
+  spotifyRefreshToken: string;
+
+  @Column({ type: 'timestamp', nullable: true, name: 'spotify_token_expires_at' })
+  spotifyTokenExpiresAt: Date;
+
+  @Column({ type: 'boolean', default: false, name: 'has_premium' })
+  hasPremium: boolean;
+
+  @Column({ type: 'boolean', default: true, name: 'is_active' })
+  isActive: boolean;
+
+  @Column({ type: 'timestamp', nullable: true, name: 'last_login_at' })
+  lastLoginAt: Date;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
+
+  @OneToMany(() => Mapping, (mapping) => mapping.createdBy)
+  mappings: Mapping[];
+}
+src/modules/auth/dto/spotify-login.dto.ts
+typescript
+import { IsString, IsNotEmpty } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+
+export class SpotifyLoginDto {
+  @ApiProperty({ description: 'Spotify authorization code', example: 'AQABBBB...' })
+  @IsString()
+  @IsNotEmpty()
+  code: string;
+}
+src/modules/auth/strategies/jwt.strategy.ts
+typescript
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { PassportStrategy } from '@nestjs/passport';
+import { ExtractJwt, Strategy } from 'passport-jwt';
+import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from '../entities/user.entity';
+
+@Injectable()
+export class JwtStrategy extends PassportStrategy(Strategy) {
+  constructor(
+    private readonly configService: ConfigService,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+  ) {
+    super({
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      ignoreExpiration: false,
+      secretOrKey: configService.get('jwt.secret'),
+    });
+  }
+
+  async validate(payload: any) {
+    const user = await this.userRepository.findOne({
+      where: { id: payload.sub, isActive: true },
+    });
+    
+    if (!user) {
+      throw new UnauthorizedException('User not found or inactive');
+    }
+    
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      spotifyId: user.spotifyId,
+      displayName: user.displayName,
+    };
+  }
+}
+src/modules/auth/auth.service.ts
+typescript
+import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
+import { firstValueFrom } from 'rxjs';
+import { User } from './entities/user.entity';
+
+@Injectable()
+export class AuthService {
+  constructor(
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+    private readonly jwtService: JwtService,
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  async spotifyLogin(authCode: string): Promise<{ jwtToken: string; user: Partial<User> }> {
+    // Exchange auth code for Spotify tokens
+    const spotifyTokens = await this.exchangeSpotifyCode(authCode);
+    
+    // Get Spotify user info
+    const spotifyUser = await this.getSpotifyUser(spotifyTokens.access_token);
+    
+    // Find or create user in database
+    let user = await this.userRepository.findOne({
+      where: { spotifyId: spotifyUser.id },
+    });
+
+    if (!user) {
+      // Check if this email is an admin
+      const isAdmin = this.isAdminEmail(spotifyUser.email);
+      
+      user = this.userRepository.create({
+        email: spotifyUser.email,
+        spotifyId: spotifyUser.id,
+        displayName: spotifyUser.display_name,
+        role: isAdmin ? 'admin' : 'user',
+        spotifyAccessToken: spotifyTokens.access_token,
+        spotifyRefreshToken: spotifyTokens.refresh_token,
+        spotifyTokenExpiresAt: new Date(Date.now() + spotifyTokens.expires_in * 1000),
+        hasPremium: spotifyUser.product === 'premium',
+        lastLoginAt: new Date(),
+      });
+    } else {
+      // Update existing user's tokens
+      user.spotifyAccessToken = spotifyTokens.access_token;
+      user.spotifyRefreshToken = spotifyTokens.refresh_token;
+      user.spotifyTokenExpiresAt = new Date(Date.now() + spotifyTokens.expires_in * 1000);
+      user.hasPremium = spotifyUser.product === 'premium';
+      user.lastLoginAt = new Date();
+    }
+    
+    await this.userRepository.save(user);
+    
+    // Generate JWT token
+    const jwtToken = this.jwtService.sign({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      spotifyId: user.spotifyId,
+    });
+    
+    // Return JWT and user info (excluding sensitive tokens)
+    const { spotifyAccessToken, spotifyRefreshToken, ...safeUser } = user;
+    return { jwtToken, user: safeUser };
+  }
+
+  private async exchangeSpotifyCode(code: string): Promise<any> {
+    const auth = Buffer.from(
+      `${this.configService.get('spotify.clientId')}:${this.configService.get('spotify.clientSecret')}`,
+    ).toString('base64');
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(
+          'https://accounts.spotify.com/api/token',
+          new URLSearchParams({
+            grant_type: 'authorization_code',
+            code: code,
+            redirect_uri: this.configService.get('spotify.redirectUri'),
+          }).toString(),
+          {
+            headers: {
+              'Authorization': `Basic ${auth}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+          },
+        ),
+      );
+      
+      return response.data;
+    } catch (error) {
+      console.error('Spotify token exchange error:', error.response?.data || error.message);
+      throw new UnauthorizedException('Failed to authenticate with Spotify');
+    }
+  }
+
+  private async getSpotifyUser(accessToken: string): Promise<any> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get('https://api.spotify.com/v1/me', {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        }),
+      );
+      return response.data;
+    } catch (error) {
+      throw new UnauthorizedException('Failed to get Spotify user info');
+    }
+  }
+
+  private isAdminEmail(email: string): boolean {
+    const adminEmails = [
+      'vandervliet.rick@gmail.com',
+      'admin@bouwradio.com',
+    ];
+    return adminEmails.includes(email);
+  }
+
+  async refreshSpotifyToken(userId: string): Promise<string> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user || !user.spotifyRefreshToken) {
+      throw new UnauthorizedException('No refresh token available');
+    }
+
+    const auth = Buffer.from(
+      `${this.configService.get('spotify.clientId')}:${this.configService.get('spotify.clientSecret')}`,
+    ).toString('base64');
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(
+          'https://accounts.spotify.com/api/token',
+          new URLSearchParams({
+            grant_type: 'refresh_token',
+            refresh_token: user.spotifyRefreshToken,
+          }).toString(),
+          {
+            headers: {
+              'Authorization': `Basic ${auth}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+          },
+        ),
+      );
+
+      user.spotifyAccessToken = response.data.access_token;
+      user.spotifyTokenExpiresAt = new Date(Date.now() + response.data.expires_in * 1000);
+      if (response.data.refresh_token) {
+        user.spotifyRefreshToken = response.data.refresh_token;
+      }
+      await this.userRepository.save(user);
+
+      return response.data.access_token;
+    } catch (error) {
+      throw new UnauthorizedException('Failed to refresh Spotify token');
+    }
+  }
+
+  async getCurrentUser(userId: string): Promise<User> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+    });
+    
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    
+    return user;
+  }
+}
+src/modules/auth/auth.controller.ts
+typescript
+import { Controller, Post, Body, Get, UseGuards, Request } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
+import { AuthService } from './auth.service';
+import { SpotifyLoginDto } from './dto/spotify-login.dto';
+
+@ApiTags('Authentication')
+@Controller('auth')
+export class AuthController {
+  constructor(private readonly authService: AuthService) {}
+
+  @Post('spotify/login')
+  @ApiOperation({ summary: 'Login with Spotify authorization code' })
+  @ApiResponse({ status: 200, description: 'Successfully authenticated' })
+  @ApiResponse({ status: 401, description: 'Invalid Spotify code' })
+  async spotifyLogin(@Body() spotifyLoginDto: SpotifyLoginDto) {
+    return this.authService.spotifyLogin(spotifyLoginDto.code);
+  }
+
+  @Get('me')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get current authenticated user' })
+  @ApiResponse({ status: 200, description: 'User information retrieved' })
+  async getCurrentUser(@Request() req) {
+    const user = await this.authService.getCurrentUser(req.user.id);
+    const { spotifyAccessToken, spotifyRefreshToken, ...safeUser } = user;
+    return safeUser;
+  }
+
+  @Post('spotify/refresh')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Refresh Spotify access token' })
+  async refreshSpotifyToken(@Request() req) {
+    const newToken = await this.authService.refreshSpotifyToken(req.user.id);
+    return { spotifyAccessToken: newToken };
+  }
+}
+src/modules/auth/auth.module.ts
+typescript
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { ConfigService } from '@nestjs/config';
+import { HttpModule } from '@nestjs/axios';
+import { AuthService } from './auth.service';
+import { AuthController } from './auth.controller';
+import { User } from './entities/user.entity';
+import { JwtStrategy } from './strategies/jwt.strategy';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([User]),
+    PassportModule.register({ defaultStrategy: 'jwt' }),
+    JwtModule.registerAsync({
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get('jwt.secret'),
+        signOptions: {
+          expiresIn: configService.get('jwt.expiresIn'),
+        },
+      }),
+      inject: [ConfigService],
+    }),
+    HttpModule,
+  ],
+  controllers: [AuthController],
+  providers: [AuthService, JwtStrategy],
+  exports: [AuthService, JwtStrategy, PassportModule, JwtModule],
+})
+export class AuthModule {}
+Songs Module
+src/modules/songs/entities/song.entity.ts
+typescript
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany, Index } from 'typeorm';
+import { Mapping } from '../../mappings/entities/mapping.entity';
+
+@Entity('songs')
+@Index(['name', 'artist'])
+export class Song {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ type: 'varchar', length: 255 })
+  name: string;
+
+  @Column({ type: 'varchar', length: 255 })
+  artist: string;
+
+  @Column({ type: 'integer', name: 'release_year' })
+  releaseYear: number;
+
+  @Column({ type: 'varchar', length: 255, unique: true, name: 'spotify_track_id' })
+  spotifyTrackId: string;
+
+  @Column({ type: 'varchar', length: 500, nullable: true, name: 'spotify_url' })
+  spotifyUrl: string;
+
+  @Column({ type: 'varchar', length: 500, nullable: true, name: 'album_image_url' })
+  albumImageUrl: string;
+
+  @Column({ type: 'varchar', length: 500, nullable: true, name: 'preview_url' })
+  previewUrl: string;
+
+  @Column({ type: 'integer', default: 0 })
+  plays: number;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
+
+  @OneToMany(() => Mapping, (mapping) => mapping.song)
+  mappings: Mapping[];
+}
+src/modules/songs/dto/create-song.dto.ts
+typescript
+import { IsString, IsNotEmpty, IsInt, Min, Max, IsOptional, IsUrl } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+
+export class CreateSongDto {
+  @ApiProperty({ description: 'Song name', example: 'Dreams' })
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @ApiProperty({ description: 'Artist name', example: 'Fleetwood Mac' })
+  @IsString()
+  @IsNotEmpty()
+  artist: string;
+
+  @ApiProperty({ description: 'Release year', example: 1977 })
+  @IsInt()
+  @Min(1900)
+  @Max(new Date().getFullYear())
+  releaseYear: number;
+
+  @ApiProperty({ description: 'Spotify Track ID', example: '0BmG3YpYpYpYpYpYpYpYpYpYpY' })
+  @IsString()
+  @IsNotEmpty()
+  spotifyTrackId: string;
+}
+src/modules/songs/dto/update-song.dto.ts
+typescript
+import { PartialType } from '@nestjs/swagger';
+import { CreateSongDto } from './create-song.dto';
+
+export class UpdateSongDto extends PartialType(CreateSongDto) {}
+src/modules/songs/dto/search-song.dto.ts
+typescript
+import { IsString, IsOptional, IsInt, Min, IsEnum } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ApiProperty } from '@nestjs/swagger';
+
+export class SearchSongDto {
+  @ApiProperty({ required: false, description: 'Search query for song name' })
+  @IsString()
+  @IsOptional()
+  q?: string;
+
+  @ApiProperty({ required: false, default: 1 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  page?: number = 1;
+
+  @ApiProperty({ required: false, default: 10 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  limit?: number = 10;
+
+  @ApiProperty({ required: false, enum: ['name', 'artist', 'releaseYear', 'createdAt'] })
+  @IsString()
+  @IsOptional()
+  sortBy?: string = 'createdAt';
+
+  @ApiProperty({ required: false, enum: ['ASC', 'DESC'] })
+  @IsEnum(['ASC', 'DESC'])
+  @IsOptional()
+  sortOrder?: 'ASC' | 'DESC' = 'DESC';
+}
+src/modules/songs/songs.service.ts
+typescript
+import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, Like, FindOptionsWhere } from 'typeorm';
+import { Song } from './entities/song.entity';
+import { CreateSongDto } from './dto/create-song.dto';
+import { UpdateSongDto } from './dto/update-song.dto';
+import { SearchSongDto } from './dto/search-song.dto';
+import { SpotifyService } from '../spotify/spotify.service';
+
+@Injectable()
+export class SongsService {
+  private readonly logger = new Logger(SongsService.name);
+
+  constructor(
+    @InjectRepository(Song)
+    private readonly songRepository: Repository<Song>,
+    private readonly spotifyService: SpotifyService,
+  ) {}
+
+  async create(createSongDto: CreateSongDto): Promise<Song> {
+    // Check if song already exists
+    const existingSong = await this.songRepository.findOne({
+      where: { spotifyTrackId: createSongDto.spotifyTrackId },
+    });
+
+    if (existingSong) {
+      throw new ConflictException('Song with this Spotify Track ID already exists');
+    }
+
+    // Fetch additional track info from Spotify
+    let spotifyInfo = null;
+    try {
+      spotifyInfo = await this.spotifyService.getTrackById(createSongDto.spotifyTrackId);
+      this.logger.log(`Fetched Spotify info for track: ${createSongDto.spotifyTrackId}`);
+    } catch (error) {
+      this.logger.warn(`Could not fetch Spotify info: ${error.message}`);
+    }
+
+    const song = this.songRepository.create({
+      ...createSongDto,
+      spotifyUrl: spotifyInfo?.spotifyUrl,
+      albumImageUrl: spotifyInfo?.albumImage,
+      previewUrl: spotifyInfo?.previewUrl,
+    });
+
+    const savedSong = await this.songRepository.save(song);
+    this.logger.log(`Song created: ${savedSong.name} by ${savedSong.artist}`);
+    
+    return savedSong;
+  }
+
+  async findAll(searchDto: SearchSongDto): Promise<{ items: Song[]; total: number; page: number; limit: number; totalPages: number }> {
+    const { q, page, limit, sortBy, sortOrder } = searchDto;
+    const where: FindOptionsWhere<Song> = {};
+    
+    if (q) {
+      where.name = Like(`%${q}%`);
+    }
+
+    const [items, total] = await this.songRepository.findAndCount({
+      where,
+      order: { [sortBy]: sortOrder },
+      skip: (page - 1) * limit,
+      take: limit,
+      relations: ['mappings', 'mappings.qrCode'],
+    });
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async findOne(id: string): Promise<Song> {
+    const song = await this.songRepository.findOne({
+      where: { id },
+      relations: ['mappings', 'mappings.qrCode', 'mappings.qrCard'],
+    });
+
+    if (!song) {
+      throw new NotFoundException(`Song with ID ${id} not found`);
+    }
+
+    return song;
+  }
+
+  async update(id: string, updateSongDto: UpdateSongDto): Promise<Song> {
+    const song = await this.findOne(id);
+    
+    // If Spotify Track ID is being updated, fetch new info
+    if (updateSongDto.spotifyTrackId && updateSongDto.spotifyTrackId !== song.spotifyTrackId) {
+      try {
+        const spotifyInfo = await this.spotifyService.getTrackById(updateSongDto.spotifyTrackId);
+        song.spotifyUrl = spotifyInfo?.spotifyUrl;
+        song.albumImageUrl = spotifyInfo?.albumImage;
+        song.previewUrl = spotifyInfo?.previewUrl;
+        this.logger.log(`Updated Spotify info for song: ${song.name}`);
+      } catch (error) {
+        this.logger.warn(`Could not fetch Spotify info: ${error.message}`);
+      }
+    }
+
+    Object.assign(song, updateSongDto);
+    const updatedSong = await this.songRepository.save(song);
+    this.logger.log(`Song updated: ${updatedSong.name}`);
+    
+    return updatedSong;
+  }
+
+  async remove(id: string): Promise<void> {
+    const song = await this.findOne(id);
+    await this.songRepository.remove(song);
+    this.logger.log(`Song deleted: ${song.name}`);
+  }
+
+  async incrementPlays(id: string): Promise<void> {
+    await this.songRepository.increment({ id }, 'plays', 1);
+    this.logger.debug(`Incremented plays for song ID: ${id}`);
+  }
+
+  async searchSpotify(query: string, limit: number = 10): Promise<any[]> {
+    this.logger.log(`Searching Spotify for: ${query}`);
+    return await this.spotifyService.searchTracks(query, limit);
+  }
+
+  async getPopularSongs(limit: number = 10): Promise<Song[]> {
+    return await this.songRepository.find({
+      order: { plays: 'DESC' },
+      take: limit,
+    });
+  }
+
+  async getRecentSongs(limit: number = 5): Promise<Song[]> {
+    return await this.songRepository.find({
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+  }
+}
+src/modules/songs/songs.controller.ts
+typescript
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Request } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
+import { SongsService } from './songs.service';
+import { CreateSongDto } from './dto/create-song.dto';
+import { UpdateSongDto } from './dto/update-song.dto';
+import { SearchSongDto } from './dto/search-song.dto';
+import { AdminGuard } from '../../common/guards/admin.guard';
+
+@ApiTags('Songs')
+@Controller('songs')
+@ApiBearerAuth()
+@UseGuards(AuthGuard('jwt'))
+export class SongsController {
+  constructor(private readonly songsService: SongsService) {}
+
+  @Post()
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Add a new song (Admin only)' })
+  @ApiResponse({ status: 201, description: 'Song created successfully' })
+  @ApiResponse({ status: 409, description: 'Song already exists' })
+  async create(@Body() createSongDto: CreateSongDto, @Request() req) {
+    const song = await this.songsService.create(createSongDto);
+    return {
+      success: true,
+      message: 'Song created successfully',
+      data: song,
+    };
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Get all songs with pagination and search' })
+  @ApiResponse({ status: 200, description: 'Songs retrieved successfully' })
+  async findAll(@Query() searchDto: SearchSongDto) {
+    const result = await this.songsService.findAll(searchDto);
+    return {
+      success: true,
+      ...result,
+    };
+  }
+
+  @Get('spotify/search')
+  @ApiOperation({ summary: 'Search songs on Spotify' })
+  @ApiQuery({ name: 'q', description: 'Search query', example: 'Dreams Fleetwood Mac' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Number of results', example: 10 })
+  async searchSpotify(@Query('q') query: string, @Query('limit') limit: number = 10) {
+    const results = await this.songsService.searchSpotify(query, limit);
+    return {
+      success: true,
+      query,
+      count: results.length,
+      data: results,
+    };
+  }
+
+  @Get('popular')
+  @ApiOperation({ summary: 'Get most played songs' })
+  async getPopularSongs(@Query('limit') limit: number = 10) {
+    const songs = await this.songsService.getPopularSongs(limit);
+    return {
+      success: true,
+      data: songs,
+    };
+  }
+
+  @Get('recent')
+  @ApiOperation({ summary: 'Get recently added songs' })
+  async getRecentSongs(@Query('limit') limit: number = 5) {
+    const songs = await this.songsService.getRecentSongs(limit);
+    return {
+      success: true,
+      data: songs,
+    };
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get song by ID' })
+  @ApiResponse({ status: 200, description: 'Song found' })
+  @ApiResponse({ status: 404, description: 'Song not found' })
+  async findOne(@Param('id') id: string) {
+    const song = await this.songsService.findOne(id);
+    return {
+      success: true,
+      data: song,
+    };
+  }
+
+  @Patch(':id')
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Update song (Admin only)' })
+  async update(@Param('id') id: string, @Body() updateSongDto: UpdateSongDto) {
+    const song = await this.songsService.update(id, updateSongDto);
+    return {
+      success: true,
+      message: 'Song updated successfully',
+      data: song,
+    };
+  }
+
+  @Delete(':id')
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Delete song (Admin only)' })
+  async remove(@Param('id') id: string) {
+    await this.songsService.remove(id);
+    return {
+      success: true,
+      message: 'Song deleted successfully',
+    };
+  }
+}
+src/modules/songs/songs.module.ts
+typescript
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { SongsService } from './songs.service';
+import { SongsController } from './songs.controller';
+import { Song } from './entities/song.entity';
+import { SpotifyModule } from '../spotify/spotify.module';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([Song]), SpotifyModule],
+  controllers: [SongsController],
+  providers: [SongsService],
+  exports: [SongsService],
+})
+export class SongsModule {}
+QR Codes Module
+src/modules/qr-codes/entities/qr-code.entity.ts
+typescript
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, OneToMany, Index } from 'typeorm';
+import { Mapping } from '../../mappings/entities/mapping.entity';
+
+@Entity('qr_codes')
+export class QrCode {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ type: 'varchar', length: 50, unique: true })
+  @Index()
+  identifier: string;
+
+  @Column({ type: 'text' })
+  code: string;
+
+  @Column({ type: 'varchar', length: 500, name: 'image_url' })
+  imageUrl: string;
+
+  @Column({ type: 'varchar', length: 500, name: 'redirect_url' })
+  redirectUrl: string;
+
+  @Column({ type: 'boolean', default: true, name: 'is_active' })
+  isActive: boolean;
+
+  @Column({ type: 'integer', default: 0 })
+  scans: number;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+
+  @OneToMany(() => Mapping, (mapping) => mapping.qrCode)
+  mappings: Mapping[];
+}
+src/modules/qr-codes/dto/create-qr-code.dto.ts
+typescript
+import { IsString, IsNotEmpty, IsUrl, IsOptional, IsBoolean } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+
+export class CreateQrCodeDto {
+  @ApiProperty({ description: 'Spotify track URL', example: 'https://open.spotify.com/track/0BmG3YpYpYpYpYpYpYpYpYpYpY' })
+  @IsUrl()
+  @IsNotEmpty()
+  spotifyUrl: string;
+
+  @ApiProperty({ description: 'Unique identifier for QR code', example: 'CARD_001' })
+  @IsString()
+  @IsNotEmpty()
+  identifier: string;
+}
+src/modules/qr-codes/qr-codes.service.ts
+typescript
+import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import * as QRCode from 'qrcode';
+import { QrCode } from './entities/qr-code.entity';
+import { CreateQrCodeDto } from './dto/create-qr-code.dto';
+
+@Injectable()
+export class QrCodesService {
+  private readonly logger = new Logger(QrCodesService.name);
+
+  constructor(
+    @InjectRepository(QrCode)
+    private readonly qrCodeRepository: Repository<QrCode>,
+    private readonly configService: ConfigService,
+  ) {}
+
+  async generateQrCode(createDto: CreateQrCodeDto): Promise<QrCode> {
+    // Check if QR code with identifier already exists
+    const existing = await this.qrCodeRepository.findOne({
+      where: { identifier: createDto.identifier },
+    });
+
+    if (existing) {
+      throw new ConflictException(`QR Code with identifier ${createDto.identifier} already exists`);
+    }
+
+    // Generate QR code image as base64
+    const qrOptions = {
+      errorCorrectionLevel: 'M',
+      margin: this.configService.get('qrCode.margin'),
+      width: this.configService.get('qrCode.size'),
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF',
+      },
+    };
+
+    const qrCodeDataUrl = await QRCode.toDataURL(createDto.spotifyUrl, qrOptions);
+    
+    // Create redirect URL that goes through your API for tracking
+    const redirectUrl = `${this.configService.get('apiUrl')}/api/qr/redirect/${createDto.identifier}`;
+
+    const qrCode = this.qrCodeRepository.create({
+      identifier: createDto.identifier,
+      code: createDto.spotifyUrl,
+      imageUrl: qrCodeDataUrl,
+      redirectUrl,
+      isActive: true,
+    });
+
+    const savedQrCode = await this.qrCodeRepository.save(qrCode);
+    this.logger.log(`QR Code generated: ${savedQrCode.identifier}`);
+    
+    return savedQrCode;
+  }
+
+  async findAll(): Promise<QrCode[]> {
+    return await this.qrCodeRepository.find({
+      relations: ['mappings', 'mappings.song'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async findOne(id: string): Promise<QrCode> {
+    const qrCode = await this.qrCodeRepository.findOne({
+      where: { id },
+      relations: ['mappings', 'mappings.song', 'mappings.qrCard'],
+    });
+
+    if (!qrCode) {
+      throw new NotFoundException(`QR Code with ID ${id} not found`);
+    }
+
+    return qrCode;
+  }
+
+  async findByIdentifier(identifier: string): Promise<QrCode> {
+    const qrCode = await this.qrCodeRepository.findOne({
+      where: { identifier },
+      relations: ['mappings', 'mappings.song', 'mappings.qrCard'],
+    });
+
+    if (!qrCode) {
+      throw new NotFoundException(`QR Code with identifier ${identifier} not found`);
+    }
+
+    return qrCode;
+  }
+
+  async incrementScans(identifier: string): Promise<void> {
+    await this.qrCodeRepository.increment({ identifier }, 'scans', 1);
+    this.logger.debug(`Incremented scans for QR: ${identifier}`);
+  }
+
+  async deactivate(id: string): Promise<QrCode> {
+    const qrCode = await this.findOne(id);
+    qrCode.isActive = false;
+    const updated = await this.qrCodeRepository.save(qrCode);
+    this.logger.log(`QR Code deactivated: ${qrCode.identifier}`);
+    return updated;
+  }
+
+  async activate(id: string): Promise<QrCode> {
+    const qrCode = await this.findOne(id);
+    qrCode.isActive = true;
+    const updated = await this.qrCodeRepository.save(qrCode);
+    this.logger.log(`QR Code activated: ${qrCode.identifier}`);
+    return updated;
+  }
+
+  async remove(id: string): Promise<void> {
+    const qrCode = await this.findOne(id);
+    await this.qrCodeRepository.remove(qrCode);
+    this.logger.log(`QR Code deleted: ${qrCode.identifier}`);
+  }
+
+  async getStats(): Promise<any> {
+    const total = await this.qrCodeRepository.count();
+    const active = await this.qrCodeRepository.count({ where: { isActive: true } });
+    const totalScans = await this.qrCodeRepository
+      .createQueryBuilder('qr_code')
+      .select('SUM(scans)', 'total')
+      .getRawOne();
+    
+    return {
+      total,
+      active,
+      inactive: total - active,
+      totalScans: parseInt(totalScans.total) || 0,
+    };
+  }
+}
+src/modules/qr-codes/qr-codes.controller.ts
+typescript
+import { Controller, Get, Post, Body, Param, Delete, UseGuards, Patch } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
+import { QrCodesService } from './qr-codes.service';
+import { CreateQrCodeDto } from './dto/create-qr-code.dto';
+import { AdminGuard } from '../../common/guards/admin.guard';
+
+@ApiTags('QR Codes')
+@Controller('qr-codes')
+@ApiBearerAuth()
+@UseGuards(AuthGuard('jwt'), AdminGuard)
+export class QrCodesController {
+  constructor(private readonly qrCodesService: QrCodesService) {}
+
+  @Post()
+  @ApiOperation({ summary: 'Generate QR code for a Spotify track (Admin only)' })
+  @ApiResponse({ status: 201, description: 'QR code generated successfully' })
+  @ApiResponse({ status: 409, description: 'QR code identifier already exists' })
+  async generate(@Body() createQrCodeDto: CreateQrCodeDto) {
+    const qrCode = await this.qrCodesService.generateQrCode(createQrCodeDto);
+    return {
+      success: true,
+      message: 'QR code generated successfully',
+      data: qrCode,
+    };
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Get all QR codes' })
+  async findAll() {
+    const qrCodes = await this.qrCodesService.findAll();
+    return {
+      success: true,
+      count: qrCodes.length,
+      data: qrCodes,
+    };
+  }
+
+  @Get('stats')
+  @ApiOperation({ summary: 'Get QR code statistics' })
+  async getStats() {
+    const stats = await this.qrCodesService.getStats();
+    return {
+      success: true,
+      data: stats,
+    };
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get QR code by ID' })
+  async findOne(@Param('id') id: string) {
+    const qrCode = await this.qrCodesService.findOne(id);
+    return {
+      success: true,
+      data: qrCode,
+    };
+  }
+
+  @Patch(':id/deactivate')
+  @ApiOperation({ summary: 'Deactivate QR code' })
+  async deactivate(@Param('id') id: string) {
+    const qrCode = await this.qrCodesService.deactivate(id);
+    return {
+      success: true,
+      message: 'QR code deactivated',
+      data: qrCode,
+    };
+  }
+
+  @Patch(':id/activate')
+  @ApiOperation({ summary: 'Activate QR code' })
+  async activate(@Param('id') id: string) {
+    const qrCode = await this.qrCodesService.activate(id);
+    return {
+      success: true,
+      message: 'QR code activated',
+      data: qrCode,
+    };
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete QR code' })
+  async remove(@Param('id') id: string) {
+    await this.qrCodesService.remove(id);
+    return {
+      success: true,
+      message: 'QR code deleted successfully',
+    };
+  }
+}
+src/modules/qr-codes/qr-codes.module.ts
+typescript
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { QrCodesService } from './qr-codes.service';
+import { QrCodesController } from './qr-codes.controller';
+import { QrCode } from './entities/qr-code.entity';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([QrCode])],
+  controllers: [QrCodesController],
+  providers: [QrCodesService],
+  exports: [QrCodesService],
+})
+export class QrCodesModule {}
+QR Cards Module
+src/modules/qr-cards/entities/qr-card.entity.ts
+typescript
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+
+@Entity('qr_cards')
+export class QrCard {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ type: 'varchar', length: 50, unique: true, name: 'card_id' })
+  @Index()
+  cardId: string;
+
+  @Column({ type: 'text', nullable: true })
+  description: string;
+
+  @Column({ type: 'varchar', length: 50, default: 'active' })
+  status: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  metadata: Record<string, any>;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
+}
+src/modules/qr-cards/dto/create-qr-card.dto.ts
+typescript
+import { IsString, IsNotEmpty, IsOptional, IsObject } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+
+export class CreateQrCardDto {
+  @ApiProperty({ description: 'Unique card identifier', example: 'CARD_001' })
+  @IsString()
+  @IsNotEmpty()
+  cardId: string;
+
+  @ApiProperty({ description: 'Card description', required: false })
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @ApiProperty({ description: 'Additional metadata', required: false })
+  @IsObject()
+  @IsOptional()
+  metadata?: Record<string, any>;
+}
+src/modules/qr-cards/dto/update-qr-card.dto.ts
+typescript
+import { PartialType } from '@nestjs/swagger';
+import { CreateQrCardDto } from './create-qr-card.dto';
+import { IsString, IsOptional } from 'class-validator';
+
+export class UpdateQrCardDto extends PartialType(CreateQrCardDto) {
+  @IsString()
+  @IsOptional()
+  status?: string;
+}
+src/modules/qr-cards/qr-cards.service.ts
+typescript
+import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { QrCard } from './entities/qr-card.entity';
+import { CreateQrCardDto } from './dto/create-qr-card.dto';
+import { UpdateQrCardDto } from './dto/update-qr-card.dto';
+
+@Injectable()
+export class QrCardsService {
+  private readonly logger = new Logger(QrCardsService.name);
+
+  constructor(
+    @InjectRepository(QrCard)
+    private readonly qrCardRepository: Repository<QrCard>,
+  ) {}
+
+  async create(createDto: CreateQrCardDto): Promise<QrCard> {
+    const existing = await this.qrCardRepository.findOne({
+      where: { cardId: createDto.cardId },
+    });
+
+    if (existing) {
+      throw new ConflictException(`QR Card with ID ${createDto.cardId} already exists`);
+    }
+
+    const qrCard = this.qrCardRepository.create({
+      ...createDto,
+      status: 'active',
+    });
+
+    const saved = await this.qrCardRepository.save(qrCard);
+    this.logger.log(`QR Card created: ${saved.cardId}`);
+    return saved;
+  }
+
+  async findAll(): Promise<QrCard[]> {
+    return await this.qrCardRepository.find({
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async findOne(id: string): Promise<QrCard> {
+    const qrCard = await this.qrCardRepository.findOne({
+      where: { id },
+    });
+
+    if (!qrCard) {
+      throw new NotFoundException(`QR Card with ID ${id} not found`);
+    }
+
+    return qrCard;
+  }
+
+  async findByCardId(cardId: string): Promise<QrCard> {
+    const qrCard = await this.qrCardRepository.findOne({
+      where: { cardId },
+    });
+
+    if (!qrCard) {
+      throw new NotFoundException(`QR Card with cardId ${cardId} not found`);
+    }
+
+    return qrCard;
+  }
+
+  async update(id: string, updateDto: UpdateQrCardDto): Promise<QrCard> {
+    const qrCard = await this.findOne(id);
+    Object.assign(qrCard, updateDto);
+    const updated = await this.qrCardRepository.save(qrCard);
+    this.logger.log(`QR Card updated: ${updated.cardId}`);
+    return updated;
+  }
+
+  async remove(id: string): Promise<void> {
+    const qrCard = await this.findOne(id);
+    await this.qrCardRepository.remove(qrCard);
+    this.logger.log(`QR Card deleted: ${qrCard.cardId}`);
+  }
+
+  async getAvailableCards(): Promise<QrCard[]> {
+    return await this.qrCardRepository.find({
+      where: { status: 'active' },
+      order: { cardId: 'ASC' },
+    });
+  }
+}
+src/modules/qr-cards/qr-cards.controller.ts
+typescript
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
+import { QrCardsService } from './qr-cards.service';
+import { CreateQrCardDto } from './dto/create-qr-card.dto';
+import { UpdateQrCardDto } from './dto/update-qr-card.dto';
+import { AdminGuard } from '../../common/guards/admin.guard';
+
+@ApiTags('QR Cards')
+@Controller('qr-cards')
+@ApiBearerAuth()
+@UseGuards(AuthGuard('jwt'), AdminGuard)
+export class QrCardsController {
+  constructor(private readonly qrCardsService: QrCardsService) {}
+
+  @Post()
+  @ApiOperation({ summary: 'Create a new QR card (Admin only)' })
+  async create(@Body() createQrCardDto: CreateQrCardDto) {
+    const qrCard = await this.qrCardsService.create(createQrCardDto);
+    return {
+      success: true,
+      message: 'QR card created successfully',
+      data: qrCard,
+    };
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Get all QR cards' })
+  async findAll() {
+    const qrCards = await this.qrCardsService.findAll();
+    return {
+      success: true,
+      count: qrCards.length,
+      data: qrCards,
+    };
+  }
+
+  @Get('available')
+  @ApiOperation({ summary: 'Get available (active) QR cards' })
+  async getAvailable() {
+    const cards = await this.qrCardsService.getAvailableCards();
+    return {
+      success: true,
+      data: cards,
+    };
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get QR card by ID' })
+  async findOne(@Param('id') id: string) {
+    const qrCard = await this.qrCardsService.findOne(id);
+    return {
+      success: true,
+      data: qrCard,
+    };
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update QR card' })
+  async update(@Param('id') id: string, @Body() updateQrCardDto: UpdateQrCardDto) {
+    const qrCard = await this.qrCardsService.update(id, updateQrCardDto);
+    return {
+      success: true,
+      message: 'QR card updated successfully',
+      data: qrCard,
+    };
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete QR card' })
+  async remove(@Param('id') id: string) {
+    await this.qrCardsService.remove(id);
+    return {
+      success: true,
+      message: 'QR card deleted successfully',
+    };
+  }
+}
+src/modules/qr-cards/qr-cards.module.ts
+typescript
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { QrCardsService } from './qr-cards.service';
+import { QrCardsController } from './qr-cards.controller';
+import { QrCard } from './entities/qr-card.entity';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([QrCard])],
+  controllers: [QrCardsController],
+  providers: [QrCardsService],
+  exports: [QrCardsService],
+})
+export class QrCardsModule {}
+Mappings Module
+src/modules/mappings/entities/mapping.entity.ts
+typescript
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
+import { Song } from '../../songs/entities/song.entity';
+import { QrCode } from '../../qr-codes/entities/qr-code.entity';
+import { QrCard } from '../../qr-cards/entities/qr-card.entity';
+import { User } from '../../auth/entities/user.entity';
+
+@Entity('mappings')
+@Index(['songId', 'qrCodeId'], { unique: true })
+export class Mapping {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ name: 'song_id', type: 'uuid' })
+  songId: string;
+
+  @Column({ name: 'qr_code_id', type: 'uuid' })
+  qrCodeId: string;
+
+  @Column({ name: 'qr_card_id', type: 'uuid', nullable: true })
+  qrCardId: string;
+
+  @Column({ name: 'created_by', type: 'uuid', nullable: true })
+  createdById: string;
+
+  @Column({ type: 'boolean', default: true, name: 'is_active' })
+  isActive: boolean;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+
+  @ManyToOne(() => Song, (song) => song.mappings)
+  @JoinColumn({ name: 'song_id' })
+  song: Song;
+
+  @ManyToOne(() => QrCode, (qrCode) => qrCode.mappings)
+  @JoinColumn({ name: 'qr_code_id' })
+  qrCode: QrCode;
+
+  @ManyToOne(() => QrCard)
+  @JoinColumn({ name: 'qr_card_id' })
+  qrCard: QrCard;
+
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'created_by' })
+  createdBy: User;
+}
+src/modules/mappings/dto/create-mapping.dto.ts
+typescript
+import { IsString, IsNotEmpty, IsOptional, IsUUID } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+
+export class CreateMappingDto {
+  @ApiProperty({ description: 'Song ID', example: '123e4567-e89b-12d3-a456-426614174000' })
+  @IsUUID()
+  @IsNotEmpty()
+  songId: string;
+
+  @ApiProperty({ description: 'QR Code ID', example: '123e4567-e89b-12d3-a456-426614174000' })
+  @IsUUID()
+  @IsNotEmpty()
+  qrCodeId: string;
+
+  @ApiProperty({ description: 'QR Card ID (optional)', required: false })
+  @IsUUID()
+  @IsOptional()
+  qrCardId?: string;
+}
+src/modules/mappings/mappings.service.ts
+typescript
+import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Mapping } from './entities/mapping.entity';
+import { CreateMappingDto } from './dto/create-mapping.dto';
+import { SongsService } from '../songs/songs.service';
+import { QrCodesService } from '../qr-codes/qr-codes.service';
+import { QrCardsService } from '../qr-cards/qr-cards.service';
+
+@Injectable()
+export class MappingsService {
+  private readonly logger = new Logger(MappingsService.name);
+
+  constructor(
+    @InjectRepository(Mapping)
+    private readonly mappingRepository: Repository<Mapping>,
+    private readonly songsService: SongsService,
+    private readonly qrCodesService: QrCodesService,
+    private readonly qrCardsService: QrCardsService,
+  ) {}
+
+  async create(createMappingDto: CreateMappingDto, userId: string): Promise<Mapping> {
+    // Verify song exists
+    const song = await this.songsService.findOne(createMappingDto.songId);
+    
+    // Verify QR code exists
+    const qrCode = await this.qrCodesService.findOne(createMappingDto.qrCodeId);
+    
+    // Check if mapping already exists
+    const existing = await this.mappingRepository.findOne({
+      where: {
+        songId: createMappingDto.songId,
+        qrCodeId: createMappingDto.qrCodeId,
+      },
+    });
+
+    if (existing) {
+      throw new ConflictException('Mapping already exists for this song and QR code');
+    }
+    
+    let qrCard = null;
+    if (createMappingDto.qrCardId) {
+      qrCard = await this.qrCardsService.findOne(createMappingDto.qrCardId);
+    }
+
+    const mapping = this.mappingRepository.create({
+      songId: song.id,
+      qrCodeId: qrCode.id,
+      qrCardId: qrCard?.id,
+      createdById: userId,
+      isActive: true,
+    });
+
+    const savedMapping = await this.mappingRepository.save(mapping);
+    this.logger.log(`Mapping created: Song "${song.name}" -> QR Code "${qrCode.identifier}"`);
+    
+    return savedMapping;
+  }
+
+  async findAll(): Promise<Mapping[]> {
+    return await this.mappingRepository.find({
+      relations: ['song', 'qrCode', 'qrCard', 'createdBy'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async findOne(id: string): Promise<Mapping> {
+    const mapping = await this.mappingRepository.findOne({
+      where: { id },
+      relations: ['song', 'qrCode', 'qrCard', 'createdBy'],
+    });
+
+    if (!mapping) {
+      throw new NotFoundException(`Mapping with ID ${id} not found`);
+    }
+
+    return mapping;
+  }
+
+  async findByQrCard(cardId: string): Promise<Mapping[]> {
+    return await this.mappingRepository.find({
+      where: { qrCardId: cardId, isActive: true },
+      relations: ['song', 'qrCode'],
+    });
+  }
+
+  async findBySong(songId: string): Promise<Mapping[]> {
+    return await this.mappingRepository.find({
+      where: { songId, isActive: true },
+      relations: ['qrCode', 'qrCard'],
+    });
+  }
+
+  async deactivate(id: string): Promise<Mapping> {
+    const mapping = await this.findOne(id);
+    mapping.isActive = false;
+    const updated = await this.mappingRepository.save(mapping);
+    this.logger.log(`Mapping deactivated: ${id}`);
+    return updated;
+  }
+
+  async remove(id: string): Promise<void> {
+    const mapping = await this.findOne(id);
+    await this.mappingRepository.remove(mapping);
+    this.logger.log(`Mapping deleted: ${id}`);
+  }
+
+  async getActiveMappingByQrIdentifier(identifier: string): Promise<Mapping | null> {
+    const qrCode = await this.qrCodesService.findByIdentifier(identifier);
+    
+    const mapping = await this.mappingRepository.findOne({
+      where: {
+        qrCodeId: qrCode.id,
+        isActive: true,
+      },
+      relations: ['song', 'qrCode'],
+    });
+    
+    return mapping;
+  }
+}
+src/modules/mappings/mappings.controller.ts
+typescript
+import { Controller, Get, Post, Body, Param, Delete, UseGuards, Request, Patch } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
+import { MappingsService } from './mappings.service';
+import { CreateMappingDto } from './dto/create-mapping.dto';
+import { AdminGuard } from '../../common/guards/admin.guard';
+
+@ApiTags('Mappings')
+@Controller('mappings')
+@ApiBearerAuth()
+@UseGuards(AuthGuard('jwt'), AdminGuard)
+export class MappingsController {
+  constructor(private readonly mappingsService: MappingsService) {}
+
+  @Post()
+  @ApiOperation({ summary: 'Create a new mapping between song and QR code (Admin only)' })
+  async create(@Body() createMappingDto: CreateMappingDto, @Request() req) {
+    const mapping = await this.mappingsService.create(createMappingDto, req.user.id);
+    return {
+      success: true,
+      message: 'Mapping created successfully',
+      data: mapping,
+    };
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Get all mappings' })
+  async findAll() {
+    const mappings = await this.mappingsService.findAll();
+    return {
+      success: true,
+      count: mappings.length,
+      data: mappings,
+    };
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get mapping by ID' })
+  async findOne(@Param('id') id: string) {
+    const mapping = await this.mappingsService.findOne(id);
+    return {
+      success: true,
+      data: mapping,
+    };
+  }
+
+  @Patch(':id/deactivate')
+  @ApiOperation({ summary: 'Deactivate mapping' })
+  async deactivate(@Param('id') id: string) {
+    const mapping = await this.mappingsService.deactivate(id);
+    return {
+      success: true,
+      message: 'Mapping deactivated',
+      data: mapping,
+    };
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete mapping' })
+  async remove(@Param('id') id: string) {
+    await this.mappingsService.remove(id);
+    return {
+      success: true,
+      message: 'Mapping deleted successfully',
+    };
+  }
+}
+src/modules/mappings/mappings.module.ts
+typescript
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { MappingsService } from './mappings.service';
+import { MappingsController } from './mappings.controller';
+import { Mapping } from './entities/mapping.entity';
+import { SongsModule } from '../songs/songs.module';
+import { QrCodesModule } from '../qr-codes/qr-codes.module';
+import { QrCardsModule } from '../qr-cards/qr-cards.module';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([Mapping]),
+    SongsModule,
+    QrCodesModule,
+    QrCardsModule,
+  ],
+  controllers: [MappingsController],
+  providers: [MappingsService],
+  exports: [MappingsService],
+})
+export class MappingsModule {}
+Spotify Module
+src/modules/spotify/spotify.service.ts
+typescript
+import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
+import { firstValueFrom } from 'rxjs';
+
+@Injectable()
+export class SpotifyService {
+  private accessToken: string;
+  private tokenExpiry: number;
+  private readonly logger = new Logger(SpotifyService.name);
+
+  constructor(
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  private async getAccessToken(): Promise<string> {
+    if (this.accessToken && Date.now() < this.tokenExpiry) {
+      return this.accessToken;
+    }
+
+    const auth = Buffer.from(
+      `${this.configService.get('spotify.clientId')}:${this.configService.get('spotify.clientSecret')}`,
+    ).toString('base64');
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(
+          'https://accounts.spotify.com/api/token',
+          'grant_type=client_credentials',
+          {
+            headers: {
+              'Authorization': `Basic ${auth}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+          },
+        ),
+      );
+
+      this.accessToken = response.data.access_token;
+      this.tokenExpiry = Date.now() + (response.data.expires_in * 1000);
+      this.logger.log('Spotify access token obtained successfully');
+      return this.accessToken;
+    } catch (error) {
+      this.logger.error('Failed to get Spotify access token', error.message);
+      throw new HttpException(
+        'Failed to authenticate with Spotify API',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async searchTracks(query: string, limit: number = 10): Promise<any[]> {
+    const token = await this.getAccessToken();
+    
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get('https://api.spotify.com/v1/search', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+          params: {
+            q: query,
+            type: 'track',
+            limit: Math.min(limit, 50),
+          },
+        }),
+      );
+
+      return response.data.tracks.items.map(track => ({
+        id: track.id,
+        name: track.name,
+        artist: track.artists.map(a => a.name).join(', '),
+        artists: track.artists.map(a => ({ id: a.id, name: a.name })),
+        album: track.album.name,
+        albumId: track.album.id,
+        albumImage: track.album.images[0]?.url,
+        albumImages: track.album.images,
+        previewUrl: track.preview_url,
+        spotifyUrl: track.external_urls.spotify,
+        duration: track.duration_ms,
+        durationFormatted: this.formatDuration(track.duration_ms),
+        popularity: track.popularity,
+        explicit: track.explicit,
+      }));
+    } catch (error) {
+      this.logger.error(`Failed to search tracks: ${query}`, error.message);
+      throw new HttpException(
+        'Failed to search tracks on Spotify',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async getTrackById(trackId: string): Promise<any> {
+    const token = await this.getAccessToken();
+    
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get(`https://api.spotify.com/v1/tracks/${trackId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }),
+      );
+
+      const track = response.data;
+      return {
+        id: track.id,
+        name: track.name,
+        artist: track.artists.map(a => a.name).join(', '),
+        artists: track.artists.map(a => ({ id: a.id, name: a.name })),
+        album: track.album.name,
+        albumId: track.album.id,
+        albumImage: track.album.images[0]?.url,
+        previewUrl: track.preview_url,
+        spotifyUrl: track.external_urls.spotify,
+        duration: track.duration_ms,
+        durationFormatted: this.formatDuration(track.duration_ms),
+        popularity: track.popularity,
+        explicit: track.explicit,
+      };
+    } catch (error) {
+      if (error.response?.status === 404) {
+        throw new HttpException('Track not found on Spotify', HttpStatus.NOT_FOUND);
+      }
+      this.logger.error(`Failed to get track: ${trackId}`, error.message);
+      throw new HttpException(
+        'Failed to get track details from Spotify',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async getSeveralTracks(trackIds: string[]): Promise<any[]> {
+    const token = await this.getAccessToken();
+    const ids = trackIds.join(',');
+    
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get(`https://api.spotify.com/v1/tracks`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+          params: { ids },
+        }),
+      );
+
+      return response.data.tracks.map(track => ({
+        id: track.id,
+        name: track.name,
+        artist: track.artists.map(a => a.name).join(', '),
+        albumImage: track.album.images[0]?.url,
+        spotifyUrl: track.external_urls.spotify,
+        previewUrl: track.preview_url,
+      }));
+    } catch (error) {
+      this.logger.error(`Failed to get several tracks`, error.message);
+      throw new HttpException(
+        'Failed to get tracks from Spotify',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async getAlbumTracks(albumId: string): Promise<any[]> {
+    const token = await this.getAccessToken();
+    
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get(`https://api.spotify.com/v1/albums/${albumId}/tracks`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+          params: { limit: 50 },
+        }),
+      );
+
+      return response.data.items.map(track => ({
+        id: track.id,
+        name: track.name,
+        duration: track.duration_ms,
+        trackNumber: track.track_number,
+      }));
+    } catch (error) {
+      this.logger.error(`Failed to get album tracks: ${albumId}`, error.message);
+      throw new HttpException(
+        'Failed to get album tracks from Spotify',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  private formatDuration(ms: number): string {
+    const minutes = Math.floor(ms / 60000);
+    const seconds = ((ms % 60000) / 1000).toFixed(0);
+    return `${minutes}:${parseInt(seconds) < 10 ? '0' : ''}${seconds}`;
+  }
+}
+src/modules/spotify/spotify.controller.ts
+typescript
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
+import { SpotifyService } from './spotify.service';
+
+@ApiTags('Spotify')
+@Controller('spotify')
+@ApiBearerAuth()
+@UseGuards(AuthGuard('jwt'))
+export class SpotifyController {
+  constructor(private readonly spotifyService: SpotifyService) {}
+
+  @Get('search')
+  @ApiOperation({ summary: 'Search for tracks on Spotify' })
+  @ApiQuery({ name: 'q', description: 'Search query', example: 'Dreams Fleetwood Mac' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Number of results (max 50)', example: 10 })
+  async searchTracks(@Query('q') query: string, @Query('limit') limit: number = 10) {
+    const results = await this.spotifyService.searchTracks(query, limit);
+    return {
+      success: true,
+      query,
+      count: results.length,
+      data: results,
+    };
+  }
+
+  @Get('track')
+  @ApiOperation({ summary: 'Get track by Spotify ID' })
+  @ApiQuery({ name: 'id', description: 'Spotify track ID', example: '0BmG3YpYpYpYpYpYpYpYpYpYpY' })
+  async getTrack(@Query('id') id: string) {
+    const track = await this.spotifyService.getTrackById(id);
+    return {
+      success: true,
+      data: track,
+    };
+  }
+
+  @Get('tracks')
+  @ApiOperation({ summary: 'Get multiple tracks by IDs' })
+  @ApiQuery({ name: 'ids', description: 'Comma-separated Spotify track IDs' })
+  async getSeveralTracks(@Query('ids') ids: string) {
+    const trackIds = ids.split(',');
+    const tracks = await this.spotifyService.getSeveralTracks(trackIds);
+    return {
+      success: true,
+      count: tracks.length,
+      data: tracks,
+    };
+  }
+}
+src/modules/spotify/spotify.module.ts
+typescript
+import { Module } from '@nestjs/common';
+import { HttpModule } from '@nestjs/axios';
+import { SpotifyService } from './spotify.service';
+import { SpotifyController } from './spotify.controller';
+
+@Module({
+  imports: [HttpModule],
+  controllers: [SpotifyController],
+  providers: [SpotifyService],
+  exports: [SpotifyService],
+})
+export class SpotifyModule {}
+QR Redirect Module (Public Endpoint)
+src/modules/qr-redirect/qr-redirect.controller.ts
+typescript
+import { Controller, Get, Param, Res, HttpStatus, Logger } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Response } from 'express';
+import { MappingsService } from '../mappings/mappings.service';
+import { QrCodesService } from '../qr-codes/qr-codes.service';
+import { SongsService } from '../songs/songs.service';
+
+@ApiTags('QR Redirect')
+@Controller('qr')
+export class QrRedirectController {
+  private readonly logger = new Logger(QrRedirectController.name);
+
+  constructor(
+    private readonly qrCodesService: QrCodesService,
+    private readonly mappingsService: MappingsService,
+    private readonly songsService: SongsService,
+  ) {}
+
+  @Get('redirect/:identifier')
+  @ApiOperation({ 
+    summary: 'Public endpoint for QR code scanning',
+    description: 'Returns Spotify track information for the scanned QR code. Mobile app uses this to open/play the track.'
+  })
+  @ApiResponse({ status: 200, description: 'QR code found, returning track info' })
+  @ApiResponse({ status: 404, description: 'QR code not found' })
+  @ApiResponse({ status: 410, description: 'QR code has been deactivated' })
+  async redirect(@Param('identifier') identifier: string, @Res() res: Response) {
+    try {
+      this.logger.log(`QR Code scanned: ${identifier}`);
+      
+      // Get QR code info
+      const qrCode = await this.qrCodesService.findByIdentifier(identifier);
+      
+      if (!qrCode.isActive) {
+        this.logger.warn(`Inactive QR code scanned: ${identifier}`);
+        return res.status(HttpStatus.GONE).json({
+          success: false,
+          error: 'This QR code has been deactivated',
+          code: 'QR_INACTIVE',
+        });
+      }
+
+      // Increment scan count
+      await this.qrCodesService.incrementScans(identifier);
+
+      // Get the active mapping for this QR code
+      const mapping = await this.mappingsService.getActiveMappingByQrIdentifier(identifier);
+      
+      let songInfo = null;
+      if (mapping && mapping.song) {
+        // Increment play count for the song
+        await this.songsService.incrementPlays(mapping.song.id);
+        
+        songInfo = {
+          id: mapping.song.id,
+          name: mapping.song.name,
+          artist: mapping.song.artist,
+          releaseYear: mapping.song.releaseYear,
+          spotifyTrackId: mapping.song.spotifyTrackId,
+          albumImageUrl: mapping.song.albumImageUrl,
+          previewUrl: mapping.song.previewUrl,
+        };
+        
+        this.logger.log(`QR ${identifier} mapped to song: ${mapping.song.name} by ${mapping.song.artist}`);
+      }
+
+      // Return JSON response for mobile app
+      // The mobile app will use this to open Spotify
+      return res.json({
+        success: true,
+        spotifyUrl: qrCode.code,
+        spotifyTrackId: songInfo?.spotifyTrackId,
+        song: songInfo,
+        redirectUrl: qrCode.code,
+        timestamp: new Date().toISOString(),
+      });
+      
+    } catch (error) {
+      if (error.status === 404) {
+        this.logger.warn(`QR code not found: ${identifier}`);
+        return res.status(HttpStatus.NOT_FOUND).json({
+          success: false,
+          error: 'QR code not found',
+          code: 'QR_NOT_FOUND',
+        });
+      }
+      
+      this.logger.error(`Error processing QR code ${identifier}:`, error.message);
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Internal server error',
+        code: 'SERVER_ERROR',
+      });
+    }
+  }
+
+  @Get('info/:identifier')
+  @ApiOperation({ summary: 'Get QR code information without redirect' })
+  async getQrInfo(@Param('identifier') identifier: string) {
+    const qrCode = await this.qrCodesService.findByIdentifier(identifier);
+    const mapping = await this.mappingsService.getActiveMappingByQrIdentifier(identifier);
+    
+    return {
+      success: true,
+      data: {
+        identifier: qrCode.identifier,
+        isActive: qrCode.isActive,
+        scans: qrCode.scans,
+        createdAt: qrCode.createdAt,
+        song: mapping?.song || null,
+      },
+    };
+  }
+}
+
+
+# App Configuration
+NODE_ENV=development
+PORT=3000
+API_URL=http://localhost:3000
+FRONTEND_URL=http://localhost:4200
+
+# Neon PostgreSQL Database
+DB_HOST=ep-aged-moon-a4xshecd.us-east-1.aws.neon.tech
+DB_PORT=5432
+DB_USERNAME=neondb_owner
+DB_PASSWORD=npg_lFxigpOb4DE0
+DB_DATABASE=neondb
+DATABASE_URL="postgresql://neondb_owner:npg_lFxigpOb4DE0@ep-aged-moon-a4xshecd.us-east-1.aws.neon.tech/neondb?sslmode=require"
+
+# Spotify API
+SPOTIFY_CLIENT_ID=b4e0d51e2b3e42508f9eb1fe5a863503
+SPOTIFY_CLIENT_SECRET=59642821ecf64598b7040c860b475f80
+SPOTIFY_REDIRECT_URI=https://api.bouwradio.com/auth/spotify/callback
+
+# JWT Authentication
+JWT_SECRET=bouwradio_super_secret_jwt_key_2024_change_this_in_production
+JWT_EXPIRES_IN=7d
+
+# QR Code Settings
+QR_CODE_SIZE=300
+QR_CODE_MARGIN=2
+
+# Rate Limiting
+THROTTLE_TTL=60
+THROTTLE_LIMIT=100
