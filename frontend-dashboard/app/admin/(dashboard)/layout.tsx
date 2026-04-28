@@ -2,7 +2,7 @@
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { clearAdminSessionCookie } from "@/app/actions/auth-session";
+import { clearAdminSessionCookie, logoutRedirect } from "@/app/actions/auth-session";
 import { logout } from "@/lib/api/auth";
 import { cn } from "@/lib/utils";
 import { LayoutGrid, LogOut, Menu, QrCode, Settings, Music2 } from "lucide-react";
@@ -46,9 +46,14 @@ function SidebarNav() { // This component is used in both the mobile sheet and t
             <button
                 type="button"
                 onClick={async () => {
-                    await clearAdminSessionCookie();
+                    // 1. Clear LocalStorage first (Client-side)
                     logout();
-                    router.push("/admin/signin");
+                    
+                    // 2. Clear Cookie via Server Action
+                    await clearAdminSessionCookie();
+                    
+                    // 3. Redirect via Server Action to ensure middleware sync
+                    await logoutRedirect();
                 }}
                 className="mt-2 flex h-14 w-full max-w-56.25 items-center gap-2 rounded-[20px] px-4 text-left text-[20px] font-medium leading-7 text-[#b91c1c] transition-colors hover:bg-[#fef2f2]"
             >

@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { apiClient } from "@/lib/api/client";
-import { setAdminSessionCookie } from "@/app/actions/auth-session";
+import { setAdminSessionCookie, loginRedirect } from "@/app/actions/auth-session";
 
 export default function Signin() {
     const router = useRouter();
@@ -29,11 +29,15 @@ export default function Signin() {
             const response = await apiClient.post("/auth/login", { email, password });
             const { jwtToken, user } = response.data;
             
+            // Set localStorage first while we're on the client
             localStorage.setItem("adminToken", jwtToken);
             localStorage.setItem("user", JSON.stringify(user));
+            
+            // Set cookie via Server Action
             await setAdminSessionCookie(jwtToken);
             
-            router.push("/admin");
+            // Redirect via Server Action to ensure middleware sees the cookie
+            await loginRedirect();
         } catch (err: any) {
             setError(err.response?.data?.message || "Invalid email or password");
         } finally {
