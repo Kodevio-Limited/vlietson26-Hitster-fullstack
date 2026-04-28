@@ -1,3 +1,4 @@
+import { setAdminSessionCookie, clearAdminSessionCookie } from "@/app/actions/auth-session";
 import { apiClient } from "./client";
 
 export async function getSpotifyAuthUrl(): Promise<string> {
@@ -13,14 +14,15 @@ export async function loginWithSpotify(code: string): Promise<{ jwtToken: string
         localStorage.setItem("adminToken", response.data.jwtToken);
         localStorage.setItem("user", JSON.stringify(response.data.user));
         
-        // Set cookie for middleware
-        document.cookie = `adminToken=${response.data.jwtToken}; path=/; max-age=604800; SameSite=Lax`;
+        // Set cookie for middleware via Server Action
+        await setAdminSessionCookie(response.data.jwtToken);
     }
     
     return response.data;
 }
 
-export function logout(): void {
+export async function logout(): Promise<void> {
     localStorage.removeItem("adminToken");
     localStorage.removeItem("user");
+    await clearAdminSessionCookie();
 }
