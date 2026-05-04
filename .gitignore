@@ -63,6 +63,17 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
+# AI and LLM
+.cursorrules
+.aie/
+.prompts/
+.ai-instructions/
+*.agent.md
+.instructions.md
+.prompt.md
+AGENTS.md
+CLAUDE.md
+
 # typescript
 *.tsbuildinfo
 
