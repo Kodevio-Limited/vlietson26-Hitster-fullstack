@@ -30,17 +30,10 @@ import { Notification } from './modules/notifications/entities/notification.enti
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
         type: 'postgres',
-        host: configService.get('database.host'),
-        port: configService.get('database.port'),
-        username: configService.get('database.username'),
-        password: configService.get('database.password'),
-        database: configService.get('database.database'),
+        url: configService.get<string>('database.url'),
         entities: [Song, QrCode, QrCard, Mapping, User, Notification],
-        synchronize: configService.get('nodeEnv') !== 'production',
-        logging: configService.get('nodeEnv') === 'development',
-        ssl: configService.get('database.ssl') ? {
-          rejectUnauthorized: false,
-        } : false,
+        synchronize: true,
+        logging: true,
         extra: {
           max: 20,
           idleTimeoutMillis: 30000,

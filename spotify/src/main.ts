@@ -17,10 +17,16 @@ async function bootstrap() {
 
   // Enable CORS
   app.enableCors({
-    origin: true, // Allow all origins in development for better debugging
+    origin: [configService.get<string>('frontendUrl')],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'Origin',
+      'X-Requested-With',
+    ],
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
 
   // Global prefix
@@ -42,9 +48,9 @@ async function bootstrap() {
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new LoggingInterceptor());
 
-  const port = configService.get('port') || 3000;
+  const port = configService.get('port') || 4000;
   await app.listen(port, '0.0.0.0');
-  
+
   logger.log(`🚀 Application is running on: http://localhost:${port}`);
   logger.log(`🔐 Environment: ${configService.get('nodeEnv')}`);
 }

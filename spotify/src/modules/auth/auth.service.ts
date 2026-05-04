@@ -8,6 +8,7 @@ import { firstValueFrom } from 'rxjs';
 import { User } from './entities/user.entity';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
+import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -143,6 +144,7 @@ export class AuthService {
     const adminEmails = [
       'vandervliet.rick@gmail.com',
       'admin@bouwradio.com',
+      'omgevingsverbinder@gmail.com',
     ];
     return adminEmails.includes(email);
   }
@@ -200,6 +202,39 @@ export class AuthService {
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
+
+    const jwtToken = this.jwtService.sign({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      spotifyId: user.spotifyId,
+    });
+
+    const { password, spotifyAccessToken, spotifyRefreshToken, ...safeUser } = user;
+    return { jwtToken, user: safeUser };
+  }
+
+  async register(registerDto: RegisterDto): Promise<{ jwtToken: string; user: Partial<User> }> {
+    const existingUser = await this.userRepository.findOne({
+      where: { email: registerDto.email },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('Email already in use');
+    }
+
+    const hashedPassword = await bcrypt.hash(registerDto.password, 10);
+    const isAdmin = this.isAdminEmail(registerDto.email);
+
+    const user = this.userRepository.create({
+      email: registerDto.email,
+      password: hashedPassword,
+      displayName: registerDto.displayName || registerDto.email.split('@')[0],
+      role: isAdmin ? 'admin' : 'user',
+      lastLoginAt: new Date(),
+    });
+
+    await this.userRepository.save(user);
 
     const jwtToken = this.jwtService.sign({
       sub: user.id,
