@@ -1,7 +1,0 @@
-{
-  "dependencies": {
-    "@tanstack/react-form": "^1.29.0",
-    "recharts": "^3.8.1",
-    "zod": "^4.3.6"
-  }
-}
