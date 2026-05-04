@@ -69,3 +69,4 @@ Desktop.ini
 build_errors*.txt
 srcconfigconfiguration.ts.txt
 scratch/
+deploy_key/
