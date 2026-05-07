@@ -6,12 +6,28 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Download, X } from "lucide-react";
+import { z } from "zod";
 
-type MapQrFormValues = {
-    qrCodeIdentifier: string;
-    songId: string;
-    spotifyTrackId: string;
-};
+const spotifyTrackIdSchema = z
+    .string()
+    .refine(
+        (val) => {
+            if (!val) return true;
+            const patterns = [/\/track\/([a-zA-Z0-9]+)/, /^([a-zA-Z0-9]+)$/];
+            return patterns.some((pattern) => pattern.test(val));
+        },
+        {
+            message: "Invalid Spotify track URL or ID",
+        },
+    );
+
+const mapQrSchema = z.object({
+    qrCodeIdentifier: z.string().min(1, "QR code identifier is required"),
+    songId: z.string().min(1, "Please select a song"),
+    spotifyTrackId: spotifyTrackIdSchema,
+});
+
+type MapQrFormValues = z.infer<typeof mapQrSchema>;
 
 type MapQrDialogContentProps = {
     songs: Array<{ id: string; label: string }>;
@@ -33,8 +49,11 @@ export function MapQrDialogContent({ songs, qrCodes, errorMessage, generatedQr, 
             songId: songs[0]?.id ?? "",
             spotifyTrackId: "",
         } satisfies MapQrFormValues,
+        validators: {
+            onChange: mapQrSchema,
+        },
         onSubmit: async ({ value }) => {
-            if (!onCreateMapping || !value.songId || !value.qrCodeIdentifier) {
+            if (!onCreateMapping) {
                 return;
             }
 

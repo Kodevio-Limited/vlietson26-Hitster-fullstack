@@ -11,18 +11,17 @@ type QrMappingCardProps = {
 
 export function QrMappingCard({ qrCodeId, songTitle, artist, qrImageUrl, onShowQr, onDelete }: QrMappingCardProps) {
     return (
-        <article className="dashboard-card h-55 p-6">
+        <button
+            type="button"
+            className="dashboard-card h-55 w-full p-6 text-left"
+            onClick={onShowQr}
+            title="Tap to view QR code"
+        >
             <div className="flex items-start justify-between">
                 <div className="flex items-end gap-3">
-                    <button
-                        type="button"
-                        onClick={onShowQr}
-                        title="Tap to get QR code"
-                        className="dashboard-chip-warning flex size-12.5 items-center justify-center rounded-[10px]"
-                        aria-label={`Show QR code for ${qrCodeId}`}
-                    >
+                    <span className="dashboard-chip-warning flex size-12.5 items-center justify-center rounded-[10px]">
                         <QrCode className="size-4.5" />
-                    </button>
+                    </span>
 
                     <div className="leading-normal">
                         <p className="text-[12px] text-[color:var(--dashboard-muted)]">QR code id</p>
@@ -30,14 +29,24 @@ export function QrMappingCard({ qrCodeId, songTitle, artist, qrImageUrl, onShowQ
                     </div>
                 </div>
 
-                <button
-                    type="button"
-                    aria-label={`Delete mapping ${qrCodeId}`}
+                <span
                     className="dashboard-chip-danger flex size-9 items-center justify-center rounded-[20px]"
-                    onClick={onDelete}
+                    role="button"
+                    aria-label={`Delete mapping ${qrCodeId}`}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete?.();
+                    }}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                            e.stopPropagation();
+                            onDelete?.();
+                        }
+                    }}
+                    tabIndex={0}
                 >
                     <Trash2 className="size-5" />
-                </button>
+                </span>
             </div>
 
             <div className="dashboard-card-soft mt-5 rounded-[16px] px-5 py-3 leading-normal">
@@ -46,8 +55,8 @@ export function QrMappingCard({ qrCodeId, songTitle, artist, qrImageUrl, onShowQ
                 <p className="text-[12px] text-[color:var(--dashboard-muted)]">{artist}</p>
             </div>
             <p className="mt-3 text-[10px] leading-normal text-[color:var(--dashboard-muted)]">
-                Tap the yellow QR icon to get this QR code.
+                Tap to view QR code.
             </p>
-        </article>
+        </button>
     );
 }

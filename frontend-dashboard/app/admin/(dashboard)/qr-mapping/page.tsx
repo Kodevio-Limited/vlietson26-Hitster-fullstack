@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { createMapping, createQrCode, deleteMapping, fetchMappings, fetchQrCodeById, fetchQrCodes, fetchSongs, updateMapping } from "@/lib/api/admin-dashboard";
 import { Download, Loader2, Plus } from "lucide-react";
+import { toast } from "sonner";
 import { useEffect, useMemo, useState } from "react";
 
 type MappingCardData = {
@@ -48,15 +49,13 @@ export default function QrMappingPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [songs, setSongs] = useState<SongOption[]>([]);
     const [qrCodes, setQrCodes] = useState<QrCodeOption[]>([]);
-    const [errorText, setErrorText] = useState("");
-    const [dialogError, setDialogError] = useState("");
     const [deletingMapping, setDeletingMapping] = useState<MappingCardData | null>(null);
     const [generatedQr, setGeneratedQr] = useState<GeneratedQrPreview | null>(null);
     const [previewQr, setPreviewQr] = useState<QrPreview | null>(null);
-    const [successMessage, setSuccessMessage] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
     const [totalItems, setTotalItems] = useState(0);
     const [itemsPerPage] = useState(8);
+    const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
     const loadMappings = async (page = currentPage) => {
         setIsLoading(true);
@@ -111,14 +110,13 @@ export default function QrMappingPage() {
                 setTotalItems(mappingsResponse.total);
                 setSongs(songsResponse.items.map((song) => ({ id: song.id, label: `${song.name} - ${song.artist}` })));
                 setQrCodes(qrCodesResponse.map((qrCode) => ({ id: qrCode.id, identifier: qrCode.identifier })));
-                setErrorText("");
             } catch {
                 if (!isMounted) {
                     return;
                 }
 
                 setMappings([]);
-                setErrorText("Could not load QR mappings from API");
+                toast.error("Could not load QR mappings from API");
             } finally {
                 if (isMounted) {
                     setIsLoading(false);
@@ -144,7 +142,6 @@ export default function QrMappingPage() {
 
     const handleCreateMapping = async (payload: { songId: string; qrCodeIdentifier: string; spotifyTrackId?: string }) => {
         try {
-            setDialogError("");
             setGeneratedQr(null);
             let selectedQrCode = qrCodes.find((qrCode) => qrCode.identifier === payload.qrCodeIdentifier);
 
@@ -190,28 +187,24 @@ export default function QrMappingPage() {
 
             await loadMappings(1);
             setCurrentPage(1);
-            setSuccessMessage("Mapping successfully created!");
-            setTimeout(() => setSuccessMessage(""), 5000);
-            setErrorText("");
+            setIsCreateDialogOpen(false);
+            toast.success("Mapping successfully created!");
         } catch (error) {
             const message = error instanceof Error ? error.message : "Failed to create mapping";
-            setDialogError(message);
+            toast.error(message);
         }
     };
 
     const handleDeleteMapping = async (mappingId: string) => {
         await deleteMapping(mappingId);
         await loadMappings();
-        setErrorText("");
     };
 
     const handleShowQr = async (mapping: MappingCardData) => {
         try {
-            setErrorText("");
             let imageUrl = mapping.qrImageUrl;
             let redirectUrl = mapping.qrRedirectUrl;
 
-            // If image is not in the list (optimized fetch), get it now
             if (!imageUrl && mapping.qrCodeBackendId) {
                 const qrInfo = await fetchQrCodeById(mapping.qrCodeBackendId);
                 imageUrl = qrInfo.imageUrl;
@@ -219,7 +212,7 @@ export default function QrMappingPage() {
             }
 
             if (!imageUrl) {
-                setErrorText("QR image is not available for this mapping yet.");
+                toast.error("QR image is not available for this mapping yet.");
                 return;
             }
 
@@ -229,7 +222,7 @@ export default function QrMappingPage() {
                 redirectUrl: redirectUrl,
             });
         } catch {
-            setErrorText("Failed to load QR image details.");
+            toast.error("Failed to load QR image details.");
         }
     };
 
@@ -243,7 +236,7 @@ export default function QrMappingPage() {
     };
 
     return (
-        <Dialog>
+        <Dialog open={isCreateDialogOpen} onOpenChange={(open) => setIsCreateDialogOpen(open)}>
             <section className="w-full pb-10">
                 <div className="dashboard-page-header">
                     <h1 className="dashboard-page-title">QR Cards</h1>
@@ -254,8 +247,6 @@ export default function QrMappingPage() {
                             Loading mappings...
                         </p>
                     ) : null}
-                    {errorText ? <p className="mt-2 text-sm text-red-600">{errorText}</p> : null}
-                    {successMessage ? <p className="mt-2 text-sm font-medium text-green-600">{successMessage}</p> : null}
                 </div>
 
                 <div className="mt-4 flex items-center justify-between gap-4">
@@ -264,7 +255,7 @@ export default function QrMappingPage() {
                     <DialogTrigger asChild>
                         <Button
                             className="h-11.5 rounded-[5px] bg-black px-3 text-[16px] leading-normal font-medium text-white hover:bg-black/95"
-                            onClick={() => setDialogError("")}
+                            onClick={() => setIsCreateDialogOpen(true)}
                         >
                             <Plus className="size-6" />
                             Map New Card
@@ -288,10 +279,7 @@ export default function QrMappingPage() {
                             songTitle={mapping.songTitle}
                             artist={mapping.artist}
                             qrImageUrl={mapping.qrImageUrl}
-                            onDelete={() => {
-                                setDialogError("");
-                                setDeletingMapping(mapping);
-                            }}
+                            onDelete={() => setDeletingMapping(mapping)}
                             onShowQr={() => handleShowQr(mapping)}
                         />
                     ))}
@@ -347,7 +335,6 @@ export default function QrMappingPage() {
             <MapQrDialogContent
                 songs={songs}
                 qrCodes={qrCodes}
-                errorMessage={dialogError}
                 generatedQr={generatedQr}
                 onCreateMapping={handleCreateMapping}
             />
@@ -357,23 +344,19 @@ export default function QrMappingPage() {
                 onOpenChange={(open) => {
                     if (!open) {
                         setDeletingMapping(null);
-                        setDialogError("");
                     }
                 }}
             >
                 {deletingMapping ? (
                     <DeleteMappingDialogContent
                         qrCodeId={deletingMapping.qrCodeId}
-                        errorMessage={dialogError}
                         onConfirm={async () => {
                             try {
-                                setDialogError("");
                                 await handleDeleteMapping(deletingMapping.id);
                                 setDeletingMapping(null);
-                                setSuccessMessage("Mapping successfully deleted!");
-                                setTimeout(() => setSuccessMessage(""), 5000);
+                                toast.success("Mapping successfully deleted!");
                             } catch {
-                                setDialogError("Failed to delete mapping");
+                                toast.error("Failed to delete mapping");
                             }
                         }}
                     />

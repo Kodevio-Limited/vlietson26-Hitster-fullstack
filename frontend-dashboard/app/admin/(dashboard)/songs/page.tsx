@@ -29,10 +29,8 @@ export default function SongsPage() {
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [query, setQuery] = useState("");
-    const [errorText, setErrorText] = useState("");
     const [editingSong, setEditingSong] = useState<UiSong | null>(null);
     const [deletingSong, setDeletingSong] = useState<UiSong | null>(null);
-    const [successMessage, setSuccessMessage] = useState("");
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
 
     const limit = 10;
@@ -61,16 +59,13 @@ export default function SongsPage() {
         const run = async () => {
             try {
                 await loadSongs(page, query);
-                if (isMounted) {
-                    setErrorText("");
-                }
             } catch (error) {
                 if (!isMounted) {
                     return;
                 }
 
                 const message = error instanceof Error ? error.message : "Failed to load songs";
-                setErrorText(message);
+                toast.error(message);
                 setSongs([]);
                 setTotal(0);
                 setTotalPages(1);
@@ -105,8 +100,7 @@ export default function SongsPage() {
         setIsAddDialogOpen(false);
         setPage(1);
         await loadSongs(1, query);
-        setSuccessMessage("Song successfully added!");
-        setTimeout(() => setSuccessMessage(""), 5000);
+        toast.success("Song successfully added!");
     };
 
     const handleEditSong = async (song: UiSong) => {
@@ -135,10 +129,10 @@ export default function SongsPage() {
             });
             await loadSongs(page, query);
             setEditingSong(null);
-            setErrorText("");
+            toast.success("Song successfully updated!");
         } catch (error) {
             const message = error instanceof Error ? error.message : "Failed to update song";
-            setErrorText(message);
+            toast.error(message);
         }
     };
 
@@ -151,12 +145,10 @@ export default function SongsPage() {
             await deleteSong(deletingSong.id);
             await loadSongs(page, query);
             setDeletingSong(null);
-            setSuccessMessage("Song successfully deleted!");
-            setTimeout(() => setSuccessMessage(""), 5000);
-            setErrorText("");
+            toast.success("Song successfully deleted!");
         } catch (error) {
             const message = error instanceof Error ? error.message : "Failed to delete song";
-            setErrorText(message);
+            toast.error(message);
         }
     };
 
@@ -172,8 +164,6 @@ export default function SongsPage() {
                             Loading songs...
                         </p>
                     ) : null}
-                    {errorText ? <p className="mt-2 text-sm text-red-600">{errorText}</p> : null}
-                    {successMessage ? <p className="mt-2 text-sm font-medium text-green-600">{successMessage}</p> : null}
                 </div>
 
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
