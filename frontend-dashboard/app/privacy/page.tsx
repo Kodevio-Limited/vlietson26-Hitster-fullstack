@@ -100,9 +100,19 @@ export default function PrivacyPolicyPage() {
         <h2 className="mt-8 mb-4 border-l-4 border-[#1DB954] pl-4 text-2xl font-semibold text-[#2c3e50]">8. Contact Us</h2>
         <div className="mt-6 rounded-lg border-l-4 border-[#3498db] bg-[#f0f4f8] p-6">
           <p className="mb-4">If you have questions or comments about this notice, you may contact us at:</p>
-          <p className="mb-2"><strong>Email:</strong> [Your Support Email Here]</p>
-          <p className="mb-2"><strong>Company:</strong> Hitster</p>
-          <p><strong>Website:</strong> [Your Website URL Here]</p>
+          <p className="mb-2">
+            <strong>Email:</strong>{" "}
+            <a href="mailto:rick@deomgevingsverbinder.nl" className="text-[#1DB954] underline">
+              rick@deomgevingsverbinder.nl
+            </a>
+          </p>
+          <p className="mb-2"><strong>Company:</strong> De Omgevingsverbinder</p>
+          <p>
+            <strong>Website:</strong>{" "}
+            <a href="https://deomgevingsverbinder.nl/" target="_blank" rel="noopener noreferrer" className="text-[#1DB954] underline">
+              https://deomgevingsverbinder.nl/
+            </a>
+          </p>
         </div>
       </div>
 
