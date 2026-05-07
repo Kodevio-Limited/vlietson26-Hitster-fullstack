@@ -3,7 +3,47 @@
 import { useAppForm } from "@/components/form/form-context";
 import { Button } from "@/components/ui/button";
 import { DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { z } from "zod";
+
+function extractSpotifyTrackId(input: string): string | null {
+    const patterns = [/\/track\/([a-zA-Z0-9]+)/, /^([a-zA-Z0-9]+)$/];
+
+    for (const pattern of patterns) {
+        const match = input.match(pattern);
+        if (match) {
+            return match[1];
+        }
+    }
+    return null;
+}
+
+const spotifyTrackIdSchema = z
+    .string()
+    .min(1, "Spotify track ID is required")
+    .refine(
+        (val) => {
+            const trackId = extractSpotifyTrackId(val);
+            return trackId !== null && trackId.length > 0;
+        },
+        {
+            message: "Invalid Spotify track URL or ID",
+        },
+    );
+
+const editSongSchema = z.object({
+    name: z.string().min(1, "Song name is required"),
+    artist: z.string().min(1, "Artist is required"),
+    releaseYear: z
+        .string()
+        .min(1, "Release year is required")
+        .refine((val) => !isNaN(Number(val)) && Number(val) > 1900 && Number(val) <= new Date().getFullYear(), {
+            message: "Enter a valid year",
+        }),
+    spotifyTrackId: spotifyTrackIdSchema,
+});
+
+type EditSongFormValues = z.infer<typeof editSongSchema>;
 
 type SongRecord = {
     id: string;
@@ -15,24 +55,10 @@ type SongRecord = {
 
 type EditSongDialogContentProps = {
     song: SongRecord;
-    errorMessage?: string;
     onSave: (payload: { id: string; name: string; artist: string; releaseYear: number; spotifyTrackId: string }) => Promise<void>;
 };
 
-type EditSongFormValues = {
-    name: string;
-    artist: string;
-    releaseYear: string;
-    spotifyTrackId: string;
-};
-
-export function EditSongDialogContent({ song, errorMessage, onSave }: EditSongDialogContentProps) {
-    const [localError, setLocalError] = useState("");
-
-    useEffect(() => {
-        setLocalError("");
-    }, [song.id]);
-
+export function EditSongDialogContent({ song, onSave }: EditSongDialogContentProps) {
     const form = useAppForm({
         defaultValues: {
             name: song.songName,
@@ -40,25 +66,29 @@ export function EditSongDialogContent({ song, errorMessage, onSave }: EditSongDi
             releaseYear: song.releaseYear,
             spotifyTrackId: song.spotifyId,
         } satisfies EditSongFormValues,
+        validators: {
+            onChange: editSongSchema,
+        },
         onSubmit: async ({ value }) => {
-            const releaseYear = Number.parseInt(value.releaseYear, 10);
-            if (Number.isNaN(releaseYear)) {
-                setLocalError("Release year must be a number.");
+            const trackId = extractSpotifyTrackId(value.spotifyTrackId);
+            if (!trackId) {
                 return;
             }
 
-            setLocalError("");
-            await onSave({
-                id: song.id,
-                name: value.name,
-                artist: value.artist,
-                releaseYear,
-                spotifyTrackId: value.spotifyTrackId,
-            });
+            try {
+                await onSave({
+                    id: song.id,
+                    name: value.name,
+                    artist: value.artist,
+                    releaseYear: Number(value.releaseYear),
+                    spotifyTrackId: trackId,
+                });
+            } catch (error) {
+                const message = error instanceof Error ? error.message : "Failed to update song";
+                toast.error(message);
+            }
         },
     });
-
-    const message = errorMessage || localError;
 
     return (
         <DialogContent className="dashboard-dialog">
@@ -66,8 +96,6 @@ export function EditSongDialogContent({ song, errorMessage, onSave }: EditSongDi
                 <DialogTitle>Edit Song</DialogTitle>
                 <DialogDescription>Update the saved song details.</DialogDescription>
             </DialogHeader>
-
-            {message ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{message}</p> : null}
 
             <form
                 className="grid gap-6"
@@ -77,8 +105,12 @@ export function EditSongDialogContent({ song, errorMessage, onSave }: EditSongDi
                 }}
             >
                 <div className="grid grid-cols-2 gap-4">
-                    <form.AppField name="name">{(field) => <field.FormInput label="Song Name" placeholder="Enter song name" />}</form.AppField>
-                    <form.AppField name="artist">{(field) => <field.FormInput label="Artist" placeholder="Enter artist name" />}</form.AppField>
+                    <form.AppField name="name">
+                        {(field) => <field.FormInput label="Song Name" placeholder="Enter song name" />}
+                    </form.AppField>
+                    <form.AppField name="artist">
+                        {(field) => <field.FormInput label="Artist" placeholder="Enter artist name" />}
+                    </form.AppField>
                 </div>
 
                 <form.AppField name="releaseYear">

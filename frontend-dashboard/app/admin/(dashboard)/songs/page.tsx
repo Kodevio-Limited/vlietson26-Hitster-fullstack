@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 import { createSong, deleteSong, fetchSongs, updateSong } from "@/lib/api/admin-dashboard";
 import { ChevronDown, Loader2, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -31,8 +32,8 @@ export default function SongsPage() {
     const [errorText, setErrorText] = useState("");
     const [editingSong, setEditingSong] = useState<UiSong | null>(null);
     const [deletingSong, setDeletingSong] = useState<UiSong | null>(null);
-    const [dialogError, setDialogError] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
+    const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
 
     const limit = 10;
 
@@ -47,7 +48,7 @@ export default function SongsPage() {
                 ArtistName: song.artist,
                 releaseYear: String(song.releaseYear),
                 spotifyId: song.spotifyTrackId,
-            }))
+            })),
         );
         setTotal(response.total);
         setTotalPages(response.totalPages || 1);
@@ -101,6 +102,7 @@ export default function SongsPage() {
 
     const handleAddSong = async (payload: { name: string; artist: string; releaseYear: number; spotifyTrackId: string }) => {
         await createSong(payload);
+        setIsAddDialogOpen(false);
         setPage(1);
         await loadSongs(1, query);
         setSuccessMessage("Song successfully added!");
@@ -108,18 +110,22 @@ export default function SongsPage() {
     };
 
     const handleEditSong = async (song: UiSong) => {
-        setDialogError("");
         setDeletingSong(null);
         setEditingSong(song);
     };
 
     const handleDeleteSong = async (song: UiSong) => {
-        setDialogError("");
         setEditingSong(null);
         setDeletingSong(song);
     };
 
-    const handleConfirmEdit = async (payload: { id: string; name: string; artist: string; releaseYear: number; spotifyTrackId: string }) => {
+    const handleConfirmEdit = async (payload: {
+        id: string;
+        name: string;
+        artist: string;
+        releaseYear: number;
+        spotifyTrackId: string;
+    }) => {
         try {
             await updateSong(payload.id, {
                 name: payload.name,
@@ -129,11 +135,10 @@ export default function SongsPage() {
             });
             await loadSongs(page, query);
             setEditingSong(null);
-            setDialogError("");
             setErrorText("");
         } catch (error) {
             const message = error instanceof Error ? error.message : "Failed to update song";
-            setDialogError(message);
+            setErrorText(message);
         }
     };
 
@@ -148,16 +153,15 @@ export default function SongsPage() {
             setDeletingSong(null);
             setSuccessMessage("Song successfully deleted!");
             setTimeout(() => setSuccessMessage(""), 5000);
-            setDialogError("");
             setErrorText("");
         } catch (error) {
             const message = error instanceof Error ? error.message : "Failed to delete song";
-            setDialogError(message);
+            setErrorText(message);
         }
     };
 
     return (
-        <Dialog>
+        <Dialog open={isAddDialogOpen} onOpenChange={(open) => setIsAddDialogOpen(open)}>
             <section className="w-full space-y-6">
                 <div className="dashboard-page-header">
                     <h1 className="dashboard-page-title">Songs</h1>
@@ -187,7 +191,10 @@ export default function SongsPage() {
                     </div>
 
                     <DialogTrigger asChild>
-                        <Button className="h-11.5 rounded-[5px] bg-black px-3 text-[16px] font-medium text-white hover:bg-black/95">
+                        <Button
+                            className="h-11.5 rounded-[5px] bg-black px-3 text-[16px] font-medium text-white hover:bg-black/95"
+                            onClick={() => setIsAddDialogOpen(true)}
+                        >
                             <Plus className="size-6" />
                             Add New Song
                         </Button>
@@ -235,19 +242,19 @@ export default function SongsPage() {
                         <table className="w-full table-fixed border-collapse">
                             <thead>
                                 <tr className="h-11.5 bg-primary">
-                                    <th className="w-30 border border-border px-2 text-left text-base leading-normal font-medium text-primary-foreground lg:text-[20px]">
+                                    <th className="w-30 border border-border px-2 text-left text-base leading-normal font-medium text-primary-foreground">
                                         Song Name
                                     </th>
-                                    <th className="w-30 border border-border px-2 text-left text-base leading-normal font-medium text-primary-foreground lg:text-[20px]">
+                                    <th className="w-30 border border-border px-2 text-left text-base leading-normal font-medium text-primary-foreground">
                                         Artist Name
                                     </th>
-                                    <th className="w-15 border border-border px-2 text-left text-base leading-normal font-medium text-primary-foreground lg:text-[20px]">
+                                    <th className="w-15 border border-border px-2 text-left text-base leading-normal font-medium text-primary-foreground">
                                         Release Year
                                     </th>
-                                    <th className="w-30 border border-border px-2 text-left text-base leading-normal font-medium text-primary-foreground lg:text-[20px]">
+                                    <th className="w-30 border border-border px-2 text-left text-base leading-normal font-medium text-primary-foreground">
                                         Spotify ID
                                     </th>
-                                    <th className="w-10 border border-border px-2 text-left text-base leading-normal font-medium text-primary-foreground lg:text-[20px]">
+                                    <th className="w-10 border border-border px-2 text-left text-base leading-normal font-medium text-primary-foreground">
                                         Action
                                     </th>
                                 </tr>
@@ -302,7 +309,9 @@ export default function SongsPage() {
                 </div>
 
                 <div className="flex flex-col gap-4 text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-                    <p className="px-2 text-sm leading-6 font-medium">Showing {startItem}-{endItem} out of {total}</p>
+                    <p className="px-2 text-sm leading-6 font-medium">
+                        Showing {startItem}-{endItem} out of {total}
+                    </p>
 
                     <div className="flex items-center gap-2.5 px-2 py-1 text-sm leading-6 font-medium lg:text-[16px]">
                         <button
@@ -317,7 +326,9 @@ export default function SongsPage() {
                             <button
                                 key={pageNumber}
                                 type="button"
-                                className={pageNumber === page ? "h-6 w-6 bg-primary px-1 py-0.5 text-primary-foreground" : "h-6 w-6 px-1 py-0.5"}
+                                className={
+                                    pageNumber === page ? "h-6 w-6 bg-primary px-1 py-0.5 text-primary-foreground" : "h-6 w-6 px-1 py-0.5"
+                                }
                                 onClick={() => setPage(pageNumber)}
                             >
                                 {pageNumber}
@@ -341,11 +352,10 @@ export default function SongsPage() {
                     onOpenChange={(open) => {
                         if (!open) {
                             setEditingSong(null);
-                            setDialogError("");
                         }
                     }}
                 >
-                    {editingSong ? <EditSongDialogContent song={editingSong} errorMessage={dialogError} onSave={handleConfirmEdit} /> : null}
+                    {editingSong ? <EditSongDialogContent song={editingSong} onSave={handleConfirmEdit} /> : null}
                 </Dialog>
 
                 <Dialog
@@ -353,13 +363,10 @@ export default function SongsPage() {
                     onOpenChange={(open) => {
                         if (!open) {
                             setDeletingSong(null);
-                            setDialogError("");
                         }
                     }}
                 >
-                    {deletingSong ? (
-                        <DeleteSongDialogContent songName={deletingSong.songName} errorMessage={dialogError} onConfirm={handleConfirmDelete} />
-                    ) : null}
+                    {deletingSong ? <DeleteSongDialogContent songName={deletingSong.songName} onConfirm={handleConfirmDelete} /> : null}
                 </Dialog>
             </section>
         </Dialog>

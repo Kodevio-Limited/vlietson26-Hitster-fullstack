@@ -34,3 +34,16 @@ apiClient.interceptors.request.use((config) => {
 
     return config;
 });
+
+apiClient.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response?.data?.message) {
+            throw new Error(error.response.data.message);
+        }
+        if (error.response?.data?.error) {
+            throw new Error(error.response.data.error);
+        }
+        throw error;
+    }
+);

@@ -11,8 +11,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-
-function SidebarNav() { // This component is used in both the mobile sheet and the desktop sidebar, so it needs to be self-contained.
+function SidebarNav() {
+    // This component is used in both the mobile sheet and the desktop sidebar, so it needs to be self-contained.
     const pathname = usePathname();
     const router = useRouter();
 
@@ -34,9 +34,10 @@ function SidebarNav() { // This component is used in both the mobile sheet and t
                         key={item.href}
                         href={item.href}
                         className={cn(
-                            "flex h-14 w-full max-w-56.25 items-center gap-2 rounded-[20px] px-4 text-[20px] font-medium leading-7 transition-colors",
-                            isActive ? "bg-[#333333] text-white" : "text-[#333333] hover:bg-[#f5f5f5]"
-                        )}>
+                            "flex h-14 w-full max-w-56.25 items-center gap-2 rounded-2xl px-4 text-lg font-medium leading-7 transition-colors",
+                            isActive ? "bg-[#333333] text-white" : "text-[#333333] hover:bg-[#f5f5f5]",
+                        )}
+                    >
                         <Icon className="size-6" />
                         {item.label}
                     </Link>
@@ -49,7 +50,7 @@ function SidebarNav() { // This component is used in both the mobile sheet and t
                     try {
                         // 1. Clear LocalStorage first (Client-side)
                         logout();
-                        
+
                         // 2. Clear Cookie via Server Action
                         await clearAdminSessionCookie();
                     } catch (error) {
@@ -67,8 +68,6 @@ function SidebarNav() { // This component is used in both the mobile sheet and t
         </nav>
     );
 }
-
-
 
 // Admin Dashboard Layout
 export default function DashboardLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -130,7 +129,10 @@ export default function DashboardLayout({ children }: Readonly<{ children: React
                         <Image src={logoImage} alt="Logo" width={52} height={52} unoptimized />
                     </div>
 
-                    <Link href="/admin/settings?tab=profile&focus=image" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+                    <Link
+                        href="/admin/settings?tab=profile&focus=image"
+                        className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+                    >
                         <Avatar className="size-12">
                             <AvatarImage src={user?.imageUrl || "/user_avater.png"} alt={displayName} />
                             <AvatarFallback>{initials}</AvatarFallback>

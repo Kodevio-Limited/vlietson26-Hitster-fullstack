@@ -3,13 +3,47 @@
 import { useAppForm } from "@/components/form/form-context";
 import { Button } from "@/components/ui/button";
 import { DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { toast } from "sonner";
+import { z } from "zod";
 
-type AddSongFormValues = {
-    name: string;
-    artist: string;
-    releaseYear: string;
-    spotifyTrackId: string;
-};
+const spotifyTrackIdSchema = z
+    .string()
+    .min(1, "Spotify track ID is required")
+    .refine(
+        (val) => {
+            const trackId = extractSpotifyTrackId(val);
+            return trackId !== null && trackId.length > 0;
+        },
+        {
+            message: "Invalid Spotify track URL or ID",
+        },
+    );
+
+function extractSpotifyTrackId(input: string): string | null {
+    const patterns = [/\/track\/([a-zA-Z0-9]+)/, /^([a-zA-Z0-9]+)$/];
+
+    for (const pattern of patterns) {
+        const match = input.match(pattern);
+        if (match) {
+            return match[1];
+        }
+    }
+    return null;
+}
+
+const addSongSchema = z.object({
+    name: z.string().min(1, "Song name is required"),
+    artist: z.string().min(1, "Artist is required"),
+    releaseYear: z
+        .string()
+        .min(1, "Release year is required")
+        .refine((val) => !isNaN(Number(val)) && Number(val) > 1900 && Number(val) <= new Date().getFullYear(), {
+            message: "Enter a valid year",
+        }),
+    spotifyTrackId: spotifyTrackIdSchema,
+});
+
+type AddSongFormValues = z.infer<typeof addSongSchema>;
 
 type AddSongDialogContentProps = {
     onSongAdded?: (payload: { name: string; artist: string; releaseYear: number; spotifyTrackId: string }) => Promise<void>;
@@ -23,22 +57,30 @@ export function AddSongDialogContent({ onSongAdded }: AddSongDialogContentProps)
             releaseYear: "",
             spotifyTrackId: "",
         } satisfies AddSongFormValues,
+        validators: {
+            onChange: addSongSchema,
+        },
         onSubmit: async ({ value }) => {
             if (!onSongAdded) {
                 return;
             }
 
-            const releaseYear = Number.parseInt(value.releaseYear, 10);
-            if (Number.isNaN(releaseYear)) {
+            const trackId = extractSpotifyTrackId(value.spotifyTrackId);
+            if (!trackId) {
                 return;
             }
 
-            await onSongAdded({
-                name: value.name,
-                artist: value.artist,
-                releaseYear,
-                spotifyTrackId: value.spotifyTrackId,
-            });
+            try {
+                await onSongAdded({
+                    name: value.name,
+                    artist: value.artist,
+                    releaseYear: Number(value.releaseYear),
+                    spotifyTrackId: trackId,
+                });
+            } catch (error) {
+                const message = error instanceof Error ? error.message : "Failed to add song";
+                toast.error(message);
+            }
         },
     });
 
@@ -57,8 +99,12 @@ export function AddSongDialogContent({ onSongAdded }: AddSongDialogContentProps)
                 }}
             >
                 <div className="grid grid-cols-2 gap-4">
-                    <form.AppField name="name">{(field) => <field.FormInput label="Song Name" placeholder="Enter song name" />}</form.AppField>
-                    <form.AppField name="artist">{(field) => <field.FormInput label="Artist" placeholder="Enter artist name" />}</form.AppField>
+                    <form.AppField name="name">
+                        {(field) => <field.FormInput label="Song Name" placeholder="Enter song name" />}
+                    </form.AppField>
+                    <form.AppField name="artist">
+                        {(field) => <field.FormInput label="Artist" placeholder="Enter artist name" />}
+                    </form.AppField>
                 </div>
 
                 <form.AppField name="releaseYear">

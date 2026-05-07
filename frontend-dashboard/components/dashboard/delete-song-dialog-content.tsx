@@ -2,22 +2,29 @@
 
 import { Button } from "@/components/ui/button";
 import { DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { toast } from "sonner";
 
 type DeleteSongDialogContentProps = {
     songName: string;
-    errorMessage?: string;
     onConfirm: () => Promise<void>;
 };
 
-export function DeleteSongDialogContent({ songName, errorMessage, onConfirm }: DeleteSongDialogContentProps) {
+export function DeleteSongDialogContent({ songName, onConfirm }: DeleteSongDialogContentProps) {
+    const handleDelete = async () => {
+        try {
+            await onConfirm();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to delete song";
+            toast.error(message);
+        }
+    };
+
     return (
         <DialogContent className="dashboard-dialog">
             <DialogHeader>
                 <DialogTitle>Delete Song</DialogTitle>
                 <DialogDescription>Confirm that you want to remove this song from the dashboard.</DialogDescription>
             </DialogHeader>
-
-            {errorMessage ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{errorMessage}</p> : null}
 
             <div className="rounded-[10px] border border-border bg-muted/30 px-4 py-3">
                 <p className="text-sm font-medium text-foreground">{songName}</p>
@@ -31,13 +38,7 @@ export function DeleteSongDialogContent({ songName, errorMessage, onConfirm }: D
                     </Button>
                 </DialogClose>
 
-                <Button
-                    type="button"
-                    className="w-full rounded-md bg-red-600 text-white hover:bg-red-700"
-                    onClick={() => {
-                        void onConfirm();
-                    }}
-                >
+                <Button type="button" className="w-full rounded-md bg-red-600 text-white hover:bg-red-700" onClick={handleDelete}>
                     Delete Song
                 </Button>
             </div>

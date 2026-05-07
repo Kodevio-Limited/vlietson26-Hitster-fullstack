@@ -32,7 +32,7 @@ function SettingsNav({ activeTab, onSelect }: { activeTab: SettingsTab; onSelect
                             key={item.key}
                             size="sm"
                             variant={isActive ? "default" : "ghost"}
-                            className="h-12 w-full justify-start rounded-[20px] px-4 text-[16px] font-medium"
+                            className="h-12 w-full justify-start gap-2 rounded-2xl px-4 font-medium"
                             onClick={() => onSelect(item.key)}
                         >
                             <Icon />
@@ -71,7 +71,7 @@ function ProfilePanel({ user, onUpdate, focusImage }: { user: any; onUpdate: (us
     }, [focusImage]);
 
     const [isLoading, setIsLoading] = useState(false);
-    const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
     const handleProfileSubmit = async () => {
         setIsLoading(true);
@@ -81,19 +81,19 @@ function ProfilePanel({ user, onUpdate, focusImage }: { user: any; onUpdate: (us
             console.log("[ProfilePanel] Submitting values:", values);
             const response = await apiClient.post("/auth/update-profile", values);
             const updatedUser = response.data;
-            
+
             // Update localStorage
             localStorage.setItem("user", JSON.stringify(updatedUser));
             window.dispatchEvent(new Event("user-updated"));
-            
+
             // Notify parent
             onUpdate(updatedUser);
-            
-            setMessage({ type: 'success', text: 'Profile updated successfully!' });
+
+            setMessage({ type: "success", text: "Profile updated successfully!" });
         } catch (err: any) {
             console.error("[ProfilePanel] Update failed:", err);
-            const errorMsg = err.response?.data?.message || err.message || 'Failed to update profile';
-            setMessage({ type: 'error', text: errorMsg });
+            const errorMsg = err.response?.data?.message || err.message || "Failed to update profile";
+            setMessage({ type: "error", text: errorMsg });
         } finally {
             setIsLoading(false);
         }
@@ -118,29 +118,33 @@ function ProfilePanel({ user, onUpdate, focusImage }: { user: any; onUpdate: (us
             </div>
 
             {message && (
-                <div className={`mx-6 mt-4 p-3 rounded-lg text-sm font-medium ${message.type === 'success' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
-                    }`}>
+                <div
+                    className={`mx-6 mt-4 p-3 rounded-lg text-sm font-medium ${
+                        message.type === "success" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-600"
+                    }`}
+                >
                     {message.text}
                 </div>
             )}
 
             <div className="space-y-6 p-6">
                 <div className="flex items-center gap-3">
-                    <div ref={imageRef} className="relative group cursor-pointer transition-all duration-300" onClick={() => document.getElementById('profile-upload')?.click()}>
+                    <div
+                        ref={imageRef}
+                        className="relative group cursor-pointer transition-all duration-300"
+                        onClick={() => document.getElementById("profile-upload")?.click()}
+                    >
                         <Avatar className="size-20 border-2 border-transparent group-hover:border-primary transition-all">
-                            <AvatarImage src={form.state.values.imageUrl || user?.imageUrl || profileImage} alt={user?.displayName || "User"} />
+                            <AvatarImage
+                                src={form.state.values.imageUrl || user?.imageUrl || profileImage}
+                                alt={user?.displayName || "User"}
+                            />
                             <AvatarFallback>{user?.displayName?.slice(0, 2).toUpperCase() || "U"}</AvatarFallback>
                         </Avatar>
                         <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
                             <span className="text-[10px] text-white font-medium">Change</span>
                         </div>
-                        <input
-                            id="profile-upload"
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={handleImageUpload}
-                        />
+                        <input id="profile-upload" type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                     </div>
 
                     <div className="space-y-1">
@@ -183,12 +187,12 @@ function SecurityPanel() {
         defaultValues: { currentPassword: "", newPassword: "", confirmNewPassword: "" },
     });
     const [isLoading, setIsLoading] = useState(false);
-    const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
     const handleSecuritySubmit = async () => {
         const values = form.state.values;
         if (values.newPassword !== values.confirmNewPassword) {
-            setMessage({ type: 'error', text: 'New passwords do not match' });
+            setMessage({ type: "error", text: "New passwords do not match" });
             return;
         }
 
@@ -197,12 +201,12 @@ function SecurityPanel() {
         try {
             await apiClient.post("/auth/change-password", {
                 currentPassword: values.currentPassword,
-                newPassword: values.newPassword
+                newPassword: values.newPassword,
             });
-            setMessage({ type: 'success', text: 'Password changed successfully!' });
+            setMessage({ type: "success", text: "Password changed successfully!" });
             form.reset();
         } catch (err: any) {
-            setMessage({ type: 'error', text: err.response?.data?.message || 'Failed to change password' });
+            setMessage({ type: "error", text: err.response?.data?.message || "Failed to change password" });
         } finally {
             setIsLoading(false);
         }
@@ -215,8 +219,11 @@ function SecurityPanel() {
             </div>
 
             {message && (
-                <div className={`mx-6 mt-4 p-3 rounded-lg text-sm font-medium ${message.type === 'success' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
-                    }`}>
+                <div
+                    className={`mx-6 mt-4 p-3 rounded-lg text-sm font-medium ${
+                        message.type === "success" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-600"
+                    }`}
+                >
                     {message.text}
                 </div>
             )}
@@ -267,7 +274,7 @@ function NotificationPanel() {
                 }
                 return true;
             }),
-        [items, securityAlertsEnabled, contentAlertsEnabled]
+        [items, securityAlertsEnabled, contentAlertsEnabled],
     );
 
     const loadNotifications = useCallback(async () => {
@@ -350,7 +357,13 @@ function NotificationPanel() {
                             <Button type="button" variant="outline" size="sm" disabled={isLoading} onClick={() => void loadNotifications()}>
                                 Refresh
                             </Button>
-                            <Button type="button" variant="outline" size="sm" disabled={isLoading || unreadCount === 0} onClick={() => void handleMarkAllRead()}>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={isLoading || unreadCount === 0}
+                                onClick={() => void handleMarkAllRead()}
+                            >
                                 Mark all read {unreadCount > 0 ? `(${unreadCount})` : ""}
                             </Button>
                         </div>
@@ -390,7 +403,13 @@ import { Suspense } from "react";
 
 export default function SettingsPage() {
     return (
-        <Suspense fallback={<div className="flex h-full w-full items-center justify-center p-8"><Loader2 className="size-8 animate-spin text-primary" /></div>}>
+        <Suspense
+            fallback={
+                <div className="flex h-full w-full items-center justify-center p-8">
+                    <Loader2 className="size-8 animate-spin text-primary" />
+                </div>
+            }
+        >
             <SettingsPageContent />
         </Suspense>
     );
