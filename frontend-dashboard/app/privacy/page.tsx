@@ -59,7 +59,7 @@ export default function PrivacyPolicyPage() {
         <ul className="mb-6 list-disc pl-6">
           <li className="mb-2"><strong>To facilitate account creation and logon process.</strong></li>
           <li className="mb-2"><strong>To deliver services to the user</strong> (e.g., music playback via Spotify, QR code interactions).</li>
-          <li className="mb-2"><strong>To process bookings and service requests</strong> initiated within the App.</li>
+          
           <li className="mb-2"><strong>To improve our App</strong> and ensure a better user experience.</li>
           <li className="mb-2"><strong>To respond to user inquiries</strong> and offer support.</li>
         </ul>
@@ -94,7 +94,7 @@ export default function PrivacyPolicyPage() {
 
         <h2 className="mt-8 mb-4 border-l-4 border-[#1DB954] pl-4 text-2xl font-semibold text-[#2c3e50]">7. Children&apos;s Privacy</h2>
         <p className="mb-6">
-          We do not knowingly solicit data from or market to children under 18 years of age. By using the App, you represent that you are at least 18 or that you are the parent or guardian of such a minor and consent to such minor dependent&apos;s use of the App.
+          We do not knowingly solicit data from or market to children.
         </p>
 
         <h2 className="mt-8 mb-4 border-l-4 border-[#1DB954] pl-4 text-2xl font-semibold text-[#2c3e50]">8. Contact Us</h2>
