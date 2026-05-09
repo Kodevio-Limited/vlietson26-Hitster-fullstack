@@ -3,8 +3,8 @@ import Image from "next/image";
 import SupportForm from "./SupportForm";
 
 export const metadata: Metadata = {
-  title: "Support - Hitster",
-  description: "Contact Support for Hitster app",
+  title: "Support - OV Bouwradio",
+  description: "Contact Support for OV Bouwradio app",
 };
 
 export default function SupportPage() {
@@ -12,7 +12,7 @@ export default function SupportPage() {
     <div className="min-h-screen bg-[#f4f7f6] py-12 px-4">
       <div className="mx-auto max-w-[800px] rounded-xl bg-white p-10 shadow-[0_10px_30px_rgba(0,0,0,0.1)]">
         <div className="mb-8 flex items-center gap-3">
-          <Image src="/logo_hitster.png" alt="Hitster Logo" width={52} height={52} unoptimized />
+          <Image src="/logo_hitster.png" alt="OV Bouwradio Logo" width={52} height={52} unoptimized />
           <h1 className="text-3xl font-bold text-[#2c3e50]">Support</h1>
         </div>
         <p className="mb-8 text-[#7f8c8d]">
@@ -39,7 +39,7 @@ export default function SupportPage() {
       </div>
 
       <footer className="mt-10 py-5 text-center text-sm text-[#7f8c8d]">
-        &copy; 2024 Hitster. All rights reserved.
+        &copy; 2024 OV Bouwradio. All rights reserved.
       </footer>
     </div>
   );

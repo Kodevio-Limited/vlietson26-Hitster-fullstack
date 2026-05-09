@@ -9,7 +9,7 @@ export class MailService {
     try {
       await this.mailerService.sendMail({
         to: email,
-        subject: 'Hitster Admin - Verification Code',
+        subject: 'OV Bouwradio Admin - Verification Code',
         template: './verification', // path to handlebars template
         context: {
           code,

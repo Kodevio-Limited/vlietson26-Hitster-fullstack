@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Image from "next/image";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy - Hitster",
-  description: "Privacy Policy for Hitster app",
+  title: "Privacy Policy - OV Bouwradio",
+  description: "Privacy Policy for OV Bouwradio app",
 };
 
 export default function PrivacyPolicyPage() {
@@ -11,13 +11,13 @@ export default function PrivacyPolicyPage() {
     <div className="min-h-screen bg-[#f4f7f6] py-12 px-4">
       <div className="mx-auto max-w-[800px] rounded-xl bg-white p-10 shadow-[0_10px_30px_rgba(0,0,0,0.1)]">
         <div className="mb-8 flex items-center gap-3">
-          <Image src="/logo_hitster.png" alt="Hitster Logo" width={52} height={52} unoptimized />
+          <Image src="/logo_hitster.png" alt="OV Bouwradio Logo" width={52} height={52} unoptimized />
           <h1 className="text-3xl font-bold text-[#2c3e50]">Privacy Policy</h1>
         </div>
         <p className="mb-8 italic text-[#7f8c8d]">Last Updated: May 7, 2024</p>
 
         <p className="mb-6">
-          Welcome to <strong>Hitster</strong> (the &quot;App&quot;). We are committed to protecting your personal information and your right to privacy. If you have any questions or concerns about this privacy notice, or our practices with regards to your personal information, please contact us.
+          Welcome to <strong>OV Bouwradio</strong> (the &quot;App&quot;). We are committed to protecting your personal information and your right to privacy. If you have any questions or concerns about this privacy notice, or our practices with regards to your personal information, please contact us.
         </p>
 
         <h2 className="mt-8 mb-4 border-l-4 border-[#1DB954] pl-4 text-2xl font-semibold text-[#2c3e50]">1. Information We Collect</h2>
@@ -117,7 +117,7 @@ export default function PrivacyPolicyPage() {
       </div>
 
       <footer className="mt-10 py-5 text-center text-sm text-[#7f8c8d]">
-        &copy; 2024 Hitster. All rights reserved.
+        &copy; 2024 OV Bouwradio. All rights reserved.
       </footer>
     </div>
   );

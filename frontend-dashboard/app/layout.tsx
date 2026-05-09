@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Hitster",
+  title: "OV Bouwradio",
   description: "QR code music game",
 };
 
