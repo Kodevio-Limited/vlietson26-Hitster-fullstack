@@ -316,60 +316,63 @@ export default function SongsPage() {
     return (
         <Dialog open={isAddDialogOpen} onOpenChange={(open) => setIsAddDialogOpen(open)}>
             <section className="w-full space-y-6">
-                <div className="dashboard-page-header">
-                    <h1 className="dashboard-page-title">Songs</h1>
-                    <p className="dashboard-page-subtitle">Manage your game contents and system configuration.</p>
-                </div>
-
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="relative w-full lg:w-116">
-                        <Input
-                            type="search"
-                            placeholder="Search"
-                            value={query}
-                            onChange={(event) => {
-                                setQuery(event.target.value);
-                                setPage(1);
-                            }}
-                        />
-                        <Search className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
+                    <div className="dashboard-page-header lg:shrink-0">
+                        <h1 className="dashboard-page-title">Songs</h1>
+                        <p className="dashboard-page-subtitle">Manage your game contents and system configuration.</p>
                     </div>
 
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <input 
-                            type="file" 
-                            accept=".csv" 
-                            className="hidden" 
-                            ref={fileInputRef} 
-                            onChange={(e) => void handleFileUpload(e)} 
-                            disabled={isImporting}
-                        />
-                        <Button 
-                            variant="outline" 
-                            className="h-11.5 rounded-[5px] px-3 text-[16px] font-medium" 
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={isImporting}
-                        >
-                            {isImporting ? <Loader2 className="size-4 animate-spin" data-icon="inline-start" /> : <Upload data-icon="inline-start" />}
-                            Bulk Upload
-                        </Button>
-                        <Button 
-                            variant="outline" 
-                            className="h-11.5 rounded-[5px] px-3 text-[16px] font-medium" 
-                            onClick={() => void handleExportCsv()}
-                        >
-                            <Download data-icon="inline-start" />
-                            Export CSV
-                        </Button>
-                        <DialogTrigger asChild>
-                            <Button
-                                className="h-11.5 rounded-[5px] bg-black px-3 text-[16px] font-medium text-white hover:bg-black/95"
-                                onClick={() => setIsAddDialogOpen(true)}
+                    <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:pl-8">
+                        <div className="relative w-full lg:w-96 xl:w-116">
+                            <Input
+                                type="search"
+                                placeholder="Search"
+                                value={query}
+                                onChange={(event) => {
+                                    setQuery(event.target.value);
+                                    setPage(1);
+                                }}
+                            />
+                            <Search className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
+                        </div>
+
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                            <input 
+                                type="file" 
+                                accept=".csv" 
+                                className="hidden" 
+                                ref={fileInputRef} 
+                                onChange={(e) => void handleFileUpload(e)} 
+                                disabled={isImporting}
+                            />
+                            <Button 
+                                variant="outline" 
+                                className="h-11.5 rounded-[5px] px-3 text-[16px] font-medium" 
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isImporting}
                             >
-                                <Plus className="size-6" />
-                                Add New Song
+                                {isImporting ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Upload className="mr-2 size-4" />}
+                                Bulk Upload
                             </Button>
-                        </DialogTrigger>
+                            <Button 
+                                variant="outline" 
+                                className="h-11.5 rounded-[5px] px-3 text-[16px] font-medium"
+                                onClick={() => void handleExportCsv()}
+                            >
+                                <Download className="mr-2 size-4" />
+                                Export CSV
+                            </Button>
+                            
+                            <DialogTrigger asChild>
+                                <Button
+                                    className="h-11.5 rounded-[5px] bg-black px-3 text-[16px] font-medium text-white hover:bg-black/95"
+                                    onClick={() => setIsAddDialogOpen(true)}
+                                >
+                                    <Plus className="size-6" />
+                                    Add New Song
+                                </Button>
+                            </DialogTrigger>
+                        </div>
                     </div>
                 </div>
 

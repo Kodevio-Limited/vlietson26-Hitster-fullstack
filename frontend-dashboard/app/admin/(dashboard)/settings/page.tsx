@@ -79,9 +79,13 @@ function ProfilePanel({ user, onUpdate, focusImage }: { user: UserProfile | null
         setIsLoading(true);
         setMessage(null);
         try {
-            const values = form.state.values;
-            console.log("[ProfilePanel] Submitting values:", values);
-            const response = await apiClient.post("/auth/update-profile", values);
+            const { email, ...values } = form.state.values;
+            const payload = {
+                ...values,
+                imageUrl: values.imageUrl || undefined
+            };
+            console.log("[ProfilePanel] Submitting payload:", payload);
+            const response = await apiClient.post("/auth/update-profile", payload);
             const updatedUser = response.data;
 
             // Update localStorage
