@@ -19,7 +19,6 @@ function SidebarNav() {
     const navItems = [
         { label: "Dashboard", href: "/admin", icon: LayoutGrid },
         { label: "Songs", href: "/admin/songs", icon: Music2 },
-        { label: "QR Mapping", href: "/admin/qr-mapping", icon: QrCode },
         { label: "Settings", href: "/admin/settings", icon: Settings },
     ];
 

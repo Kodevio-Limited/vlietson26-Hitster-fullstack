@@ -1,4 +1,11 @@
-import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  Logger,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { Mapping } from './entities/mapping.entity';
@@ -15,13 +22,17 @@ export class MappingsService {
   constructor(
     @InjectRepository(Mapping)
     private readonly mappingRepository: Repository<Mapping>,
+    @Inject(forwardRef(() => SongsService))
     private readonly songsService: SongsService,
     private readonly qrCodesService: QrCodesService,
     private readonly qrCardsService: QrCardsService,
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  async create(createMappingDto: CreateMappingDto, userId: string): Promise<Mapping> {
+  async create(
+    createMappingDto: CreateMappingDto,
+    userId: string,
+  ): Promise<Mapping> {
     // Verify song exists
     const song = await this.songsService.findOne(createMappingDto.songId);
 
@@ -39,7 +50,9 @@ export class MappingsService {
     });
 
     if (existing) {
-      throw new ConflictException('Mapping already exists for this song and QR code');
+      throw new ConflictException(
+        'Mapping already exists for this song and QR code',
+      );
     }
 
     let qrCard: any = null;
@@ -66,21 +79,32 @@ export class MappingsService {
         category: 'content',
         title: 'QR mapping created',
         message: `QR ${qrCode.identifier} mapped to "${song.name}".`,
-        metadata: { mappingId: savedMapping.id, songId: song.id, qrCodeId: qrCode.id },
+        metadata: {
+          mappingId: savedMapping.id,
+          songId: song.id,
+          qrCodeId: qrCode.id,
+        },
       });
-      this.logger.log(`Mapping created: Song "${song.name}" -> QR Code "${qrCode.identifier}"`);
+      this.logger.log(
+        `Mapping created: Song "${song.name}" -> QR Code "${qrCode.identifier}"`,
+      );
 
       return savedMapping;
     } catch (err) {
       // Concurrent insert hit the unique index. Translate to a friendly error.
       if (err instanceof QueryFailedError && (err as any).code === '23505') {
-        throw new ConflictException('Mapping already exists for this song and QR code');
+        throw new ConflictException(
+          'Mapping already exists for this song and QR code',
+        );
       }
       throw err;
     }
   }
 
-  async update(id: string, updateMappingDto: Partial<CreateMappingDto>): Promise<Mapping> {
+  async update(
+    id: string,
+    updateMappingDto: Partial<CreateMappingDto>,
+  ): Promise<Mapping> {
     const mapping = await this.findOne(id);
 
     if (updateMappingDto.songId) {
@@ -89,12 +113,16 @@ export class MappingsService {
     }
 
     if (updateMappingDto.qrCodeId) {
-      const qrCode = await this.qrCodesService.findOne(updateMappingDto.qrCodeId);
+      const qrCode = await this.qrCodesService.findOne(
+        updateMappingDto.qrCodeId,
+      );
       mapping.qrCodeId = qrCode.id;
     }
 
     if (updateMappingDto.qrCardId) {
-      const qrCard = await this.qrCardsService.findOne(updateMappingDto.qrCardId);
+      const qrCard = await this.qrCardsService.findOne(
+        updateMappingDto.qrCardId,
+      );
       mapping.qrCardId = qrCard.id;
     }
 
@@ -104,7 +132,10 @@ export class MappingsService {
     return this.findOne(updated.id);
   }
 
-  async findAll(page = 1, limit = 10): Promise<{ items: Mapping[]; total: number }> {
+  async findAll(
+    page = 1,
+    limit = 10,
+  ): Promise<{ items: Mapping[]; total: number }> {
     const safeLimit = Math.min(limit, 100);
     const skip = (page - 1) * safeLimit;
     const [items, total] = await this.mappingRepository.findAndCount({
@@ -163,12 +194,18 @@ export class MappingsService {
       severity: 'warning',
       title: 'QR mapping deleted',
       message: `Mapping removed: QR ${mappingQrIdentifier} from "${mappingSongName}".`,
-      metadata: { mappingId: id, songId: mapping.songId, qrCodeId: mapping.qrCodeId },
+      metadata: {
+        mappingId: id,
+        songId: mapping.songId,
+        qrCodeId: mapping.qrCodeId,
+      },
     });
     this.logger.log(`Mapping deleted: ${id}`);
   }
 
-  async getActiveMappingByQrIdentifier(identifier: string): Promise<Mapping | null> {
+  async getActiveMappingByQrIdentifier(
+    identifier: string,
+  ): Promise<Mapping | null> {
     const qrCode = await this.qrCodesService.findByIdentifier(identifier);
 
     const mapping = await this.mappingRepository.findOne({

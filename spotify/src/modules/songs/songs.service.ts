@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, FindOptionsWhere } from 'typeorm';
 import { Song } from './entities/song.entity';
@@ -8,6 +8,9 @@ import { SearchSongDto } from './dto/search-song.dto';
 import { SpotifyService } from '../spotify/spotify.service';
 import { CacheService } from '../../common/services/cache.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { QrCodesService } from '../qr-codes/qr-codes.service';
+import { MappingsService } from '../mappings/mappings.service';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class SongsService {
@@ -19,6 +22,9 @@ export class SongsService {
     private readonly spotifyService: SpotifyService,
     private readonly cacheService: CacheService,
     private readonly notificationsService: NotificationsService,
+    private readonly qrCodesService: QrCodesService,
+    @Inject(forwardRef(() => MappingsService))
+    private readonly mappingsService: MappingsService,
   ) {}
 
   async create(createSongDto: CreateSongDto): Promise<Song> {
@@ -59,6 +65,121 @@ export class SongsService {
     this.logger.log(`Song created: ${savedSong.name} by ${savedSong.artist}`);
     
     return savedSong;
+  }
+
+  private extractSpotifyTrackId(input: string): string | null {
+    const patterns = [/\/track\/([a-zA-Z0-9]+)/, /^([a-zA-Z0-9]+)$/];
+    for (const pattern of patterns) {
+      const match = input.match(pattern);
+      if (match) {
+        return match[1];
+      }
+    }
+    return null;
+  }
+
+  async importSong(spotifyUrl: string, userId: string): Promise<Song> {
+    const trackId = this.extractSpotifyTrackId(spotifyUrl);
+    if (!trackId) {
+      throw new ConflictException('Invalid Spotify URL or Track ID');
+    }
+
+    // Check if song already exists
+    let song = await this.songRepository.findOne({
+      where: { spotifyTrackId: trackId },
+      relations: ['mappings', 'mappings.qrCode'],
+    });
+
+    if (song) {
+       return song;
+    }
+
+    // Fetch track info from Spotify
+    let spotifyInfo: any = null;
+    try {
+      spotifyInfo = await this.spotifyService.getTrackById(trackId);
+    } catch (error) {
+      throw new ConflictException(`Could not fetch info from Spotify: ${error.message}`);
+    }
+
+    let releaseYear = new Date().getFullYear();
+    if (spotifyInfo.album && spotifyInfo.album.release_date) {
+        const yearMatch = spotifyInfo.album.release_date.match(/^(\d{4})/);
+        if (yearMatch) {
+            releaseYear = parseInt(yearMatch[1], 10);
+        }
+    } else if (spotifyInfo.albumId) {
+        releaseYear = new Date().getFullYear(); // Fallback if no album release date is given by simple track fetch
+    }
+
+    song = this.songRepository.create({
+      name: spotifyInfo.name,
+      artist: spotifyInfo.artist,
+      releaseYear: releaseYear,
+      spotifyTrackId: trackId,
+      spotifyUrl: spotifyInfo.spotifyUrl,
+      albumImageUrl: spotifyInfo.albumImage,
+      previewUrl: spotifyInfo.previewUrl,
+      plays: 0,
+    });
+
+    const savedSong = await this.songRepository.save(song);
+
+    // Generate QR Code
+    const identifier = randomUUID().replace(/-/g, '').substring(0, 10);
+    const qrCode = await this.qrCodesService.generateQrCode({
+      identifier,
+      spotifyUrl: spotifyInfo.spotifyUrl,
+      spotifyTrackId: trackId,
+    });
+
+    // Create Mapping
+    await this.mappingsService.create({
+      songId: savedSong.id,
+      qrCodeId: qrCode.id,
+    }, userId);
+
+    this.cacheService.invalidatePattern('songs:*');
+    await this.notificationsService.create({
+      type: 'song_created',
+      category: 'content',
+      title: 'Song imported',
+      message: `"${savedSong.name}" by ${savedSong.artist} was imported.`,
+      metadata: { songId: savedSong.id },
+    });
+    
+    return await this.findOne(savedSong.id);
+  }
+
+  async regenerateQrCode(songId: string, userId: string): Promise<any> {
+    const song = await this.findOne(songId);
+
+    // Find existing active mapping
+    const mappings = await this.mappingsService.findBySong(songId);
+    for (const mapping of mappings) {
+      if (mapping.isActive) {
+         await this.mappingsService.deactivate(mapping.id);
+         if (mapping.qrCode) {
+           await this.qrCodesService.deactivate(mapping.qrCode.id);
+         }
+      }
+    }
+
+    // Generate new QR Code
+    const identifier = randomUUID().replace(/-/g, '').substring(0, 10);
+    const newQrCode = await this.qrCodesService.generateQrCode({
+      identifier,
+      spotifyUrl: song.spotifyUrl || `https://open.spotify.com/track/${song.spotifyTrackId}`,
+      spotifyTrackId: song.spotifyTrackId,
+    });
+
+    // Create new Mapping
+    await this.mappingsService.create({
+      songId: song.id,
+      qrCodeId: newQrCode.id,
+    }, userId);
+
+    return newQrCode;
   }
 
   async findAll(searchDto: SearchSongDto): Promise<{ items: Song[]; total: number; page: number; limit: number; totalPages: number }> {

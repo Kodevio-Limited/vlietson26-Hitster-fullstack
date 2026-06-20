@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MappingsService } from './mappings.service';
 import { MappingsController } from './mappings.controller';
@@ -11,7 +11,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([Mapping]),
-    SongsModule,
+    forwardRef(() => SongsModule),
     QrCodesModule,
     QrCardsModule,
     NotificationsModule,

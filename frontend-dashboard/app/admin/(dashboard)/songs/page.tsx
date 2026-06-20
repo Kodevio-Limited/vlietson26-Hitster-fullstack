@@ -8,7 +8,7 @@ import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { createSong, deleteSong, fetchSongs, updateSong } from "@/lib/api/admin-dashboard";
+import { importSong, deleteSong, fetchSongs, updateSong, regenerateSongQr, getSongQrCode } from "@/lib/api/admin-dashboard";
 import { ChevronDown, Loader2, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -95,9 +95,9 @@ export default function SongsPage() {
     const startItem = total === 0 ? 0 : (page - 1) * limit + 1;
     const endItem = Math.min(page * limit, total);
 
-    const handleAddSong = async (payload: { name: string; artist: string; releaseYear: number; spotifyTrackId: string }) => {
+    const handleAddSong = async (payload: { spotifyUrl: string }) => {
         try {
-            await createSong(payload);
+            await importSong(payload.spotifyUrl);
             setIsAddDialogOpen(false);
             setPage(1);
             await loadSongs(1, query);
@@ -153,6 +153,41 @@ export default function SongsPage() {
             toast.success("Song successfully deleted!");
         } catch (error) {
             const message = error instanceof Error ? error.message : "Failed to delete song";
+            toast.error(message);
+        }
+    };
+
+    const handleRegenerateQr = async (song: UiSong) => {
+        try {
+            const loadingToast = toast.loading(`Regenerating QR for ${song.songName}...`);
+            await regenerateSongQr(song.id);
+            toast.dismiss(loadingToast);
+            toast.success("QR Code successfully regenerated!");
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to regenerate QR code";
+            toast.error(message);
+        }
+    };
+
+    const handleDownloadQr = async (song: UiSong) => {
+        try {
+            const loadingToast = toast.loading(`Preparing QR for ${song.songName}...`);
+            const qrCode = await getSongQrCode(song.id);
+            toast.dismiss(loadingToast);
+
+            if (!qrCode || !qrCode.imageUrl) {
+                 toast.error("No QR Code image found for this song.");
+                 return;
+            }
+
+            const link = document.createElement('a');
+            link.href = qrCode.imageUrl;
+            link.download = `QR_${song.songName.replace(/\s+/g, '_')}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to download QR code";
             toast.error(message);
         }
     };
@@ -222,6 +257,8 @@ export default function SongsPage() {
                                     <DropdownMenuContent align="start" className="w-40">
                                         <DropdownMenuItem onClick={() => void handleEditSong(song)}>Edit</DropdownMenuItem>
                                         <DropdownMenuItem>Disable</DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => void handleDownloadQr(song)}>Download QR</DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => void handleRegenerateQr(song)}>Regenerate QR</DropdownMenuItem>
                                         <DropdownMenuItem variant="destructive" onClick={() => void handleDeleteSong(song)}>
                                             Delete
                                         </DropdownMenuItem>
@@ -290,6 +327,8 @@ export default function SongsPage() {
                                                 <DropdownMenuContent align="start" className="w-40">
                                                     <DropdownMenuItem onClick={() => void handleEditSong(song)}>Edit</DropdownMenuItem>
                                                     <DropdownMenuItem>Disable</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => void handleDownloadQr(song)}>Download QR</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => void handleRegenerateQr(song)}>Regenerate QR</DropdownMenuItem>
                                                     <DropdownMenuItem variant="destructive" onClick={() => void handleDeleteSong(song)}>
                                                         Delete
                                                     </DropdownMenuItem>

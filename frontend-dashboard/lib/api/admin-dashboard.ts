@@ -136,13 +136,19 @@ export type QrCodeInfoDto = {
     isActive: boolean;
 };
 
-export async function createSong(payload: {
-    name: string;
-    artist: string;
-    releaseYear: number;
-    spotifyTrackId: string;
-}): Promise<void> {
-    await apiClient.post("/songs", payload);
+export async function importSong(spotifyUrl: string): Promise<SongDto> {
+    const response = await apiClient.post<{ success: boolean; data: SongDto }>("/songs/import", { spotifyUrl });
+    return response.data.data;
+}
+
+export async function regenerateSongQr(songId: string): Promise<GeneratedQrCode> {
+    const response = await apiClient.post<{ success: boolean; data: GeneratedQrCode }>(`/songs/${songId}/qr/regenerate`);
+    return response.data.data;
+}
+
+export async function getSongQrCode(songId: string): Promise<GeneratedQrCode> {
+    const response = await apiClient.get<{ success: boolean; data: GeneratedQrCode }>(`/songs/${songId}/qr`);
+    return response.data.data;
 }
 
 export async function updateSong(

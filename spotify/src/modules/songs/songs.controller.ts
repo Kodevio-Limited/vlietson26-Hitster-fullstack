@@ -5,6 +5,7 @@ import { SongsService } from './songs.service';
 import { CreateSongDto } from './dto/create-song.dto';
 import { UpdateSongDto } from './dto/update-song.dto';
 import { SearchSongDto } from './dto/search-song.dto';
+import { ImportSongDto } from './dto/import-song.dto';
 import { AdminGuard } from '../../common/guards/admin.guard';
 
 @Controller('songs')
@@ -20,6 +21,43 @@ export class SongsController {
       success: true,
       message: 'Song created successfully',
       data: song,
+    };
+  }
+
+  @Post('import')
+  @UseGuards(AdminGuard)
+  async importSong(@Body() importSongDto: ImportSongDto, @Request() req) {
+    const userId = req.user?.id || 'system'; // Assuming req.user exists from JwtAuthGuard
+    const song = await this.songsService.importSong(importSongDto.spotifyUrl, userId);
+    return {
+      success: true,
+      message: 'Song imported successfully',
+      data: song,
+    };
+  }
+
+  @Post(':id/qr/regenerate')
+  @UseGuards(AdminGuard)
+  async regenerateQrCode(@Param('id') id: string, @Request() req) {
+    const userId = req.user?.id || 'system';
+    const qrCode = await this.songsService.regenerateQrCode(id, userId);
+    return {
+      success: true,
+      message: 'QR Code regenerated successfully',
+      data: qrCode,
+    };
+  }
+
+  @Get(':id/qr')
+  async getQrCode(@Param('id') id: string) {
+    const song = await this.songsService.findOne(id);
+    const mapping = song.mappings?.find(m => m.isActive);
+    if (!mapping || !mapping.qrCode) {
+      return { success: false, message: 'No active QR code found for this song' };
+    }
+    return {
+      success: true,
+      data: mapping.qrCode,
     };
   }
 
