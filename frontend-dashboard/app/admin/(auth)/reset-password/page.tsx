@@ -51,8 +51,9 @@ export default function ResetPassword() {
             
             alert("Password reset successful! Please login.");
             router.push("/admin/signin");
-        } catch (err: any) {
-            setError(err.response?.data?.message || "Failed to reset password");
+        } catch (err: unknown) {
+            const error = err as { response?: { data?: { message?: string } } };
+            setError(error.response?.data?.message || "Failed to reset password");
         } finally {
             setIsLoading(false);
         }
@@ -64,7 +65,7 @@ export default function ResetPassword() {
                 <div className="mb-8 flex flex-col items-center text-center">
                     <h1 className="text-2xl font-bold text-[#333333]">Reset Password</h1>
                     <p className="mt-2 text-sm text-[#666666]">
-                        We've sent a verification code to your registered email address. 
+                        We&apos;ve sent a verification code to your registered email address. 
                         Please enter it both below to confirm your identity and continue.
                     </p>
                 </div>

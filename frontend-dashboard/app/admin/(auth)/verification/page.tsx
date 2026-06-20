@@ -55,8 +55,9 @@ export default function Verification() {
             const response = await apiClient.post("/auth/verify-otp", { email, code });
             localStorage.setItem("reset_token", response.data.token);
             router.push("/admin/reset-password");
-        } catch (err: any) {
-            setError(err.response?.data?.message || "Invalid verification code");
+        } catch (err: unknown) {
+            const error = err as { response?: { data?: { message?: string } } };
+            setError(error.response?.data?.message || "Invalid verification code");
         } finally {
             setIsLoading(false);
         }
@@ -67,7 +68,7 @@ export default function Verification() {
         try {
             await apiClient.post("/auth/forgot-password", { email });
             toast.success("Verification code resent!");
-        } catch (err: unknown) {
+        } catch {
             setError("Failed to resend code");
             toast.error("Failed to resend code");
         }
@@ -79,7 +80,7 @@ export default function Verification() {
                 <div className="mb-8 flex flex-col items-center text-center">
                     <h1 className="text-2xl font-bold text-[#333333]">Verification</h1>
                     <p className="mt-2 text-sm text-[#666666]">
-                        We've sent a verification code to your registered email address. 
+                        We&apos;ve sent a verification code to your registered email address. 
                         Please enter the code below to confirm your identity and continue.
                     </p>
                 </div>
@@ -118,7 +119,7 @@ export default function Verification() {
                         </Button>
 
                         <div className="text-center text-sm text-[#666666]">
-                            Didn't receive the code? Check your spam or{" "}
+                            Didn&apos;t receive the code? Check your spam or{" "}
                             <button 
                                 type="button"
                                 onClick={handleResend}

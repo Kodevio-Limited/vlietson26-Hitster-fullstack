@@ -2,10 +2,10 @@
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { clearAdminSessionCookie, logoutRedirect } from "@/app/actions/auth-session";
+import { clearAdminSessionCookie } from "@/app/actions/auth-session";
 import { logout } from "@/lib/api/auth";
 import { cn } from "@/lib/utils";
-import { LayoutGrid, LogOut, Menu, QrCode, Settings, Music2 } from "lucide-react";
+import { LayoutGrid, LogOut, Menu, Settings, Music2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";

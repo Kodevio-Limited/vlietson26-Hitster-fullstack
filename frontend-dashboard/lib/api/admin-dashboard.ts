@@ -77,12 +77,14 @@ type NotificationsResponse = {
     data: NotificationDto[];
 };
 
-export async function fetchSongs(params?: { q?: string; page?: number; limit?: number }): Promise<SongsResponse> {
+export async function fetchSongs(params?: { q?: string; page?: number; limit?: number; sortBy?: string; sortOrder?: "ASC" | "DESC" }): Promise<SongsResponse> {
     const response = await apiClient.get<SongsResponse>("/songs", {
         params: {
             q: params?.q,
             page: params?.page ?? 1,
             limit: params?.limit ?? 10,
+            sortBy: params?.sortBy,
+            sortOrder: params?.sortOrder,
         },
     });
 
@@ -139,6 +141,25 @@ export type QrCodeInfoDto = {
 export async function importSong(spotifyUrl: string): Promise<SongDto> {
     const response = await apiClient.post<{ success: boolean; data: SongDto }>("/songs/import", { spotifyUrl });
     return response.data.data;
+}
+
+export async function importBulkSongs(urls: string[]): Promise<{ successful: number; failed: number; errors: string[] }> {
+    const response = await apiClient.post<{ success: boolean; data: { successful: number; failed: number; errors: string[] } }>("/songs/import/bulk", { urls });
+    return response.data.data;
+}
+
+export async function exportSongsCsv(): Promise<void> {
+    const response = await apiClient.get("/songs/export/csv", {
+        responseType: "blob",
+    });
+
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "songs_export.csv");
+    document.body.appendChild(link);
+    link.click();
+    link.parentNode?.removeChild(link);
 }
 
 export async function regenerateSongQr(songId: string): Promise<GeneratedQrCode> {

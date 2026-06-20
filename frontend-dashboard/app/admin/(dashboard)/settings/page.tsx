@@ -45,7 +45,9 @@ function SettingsNav({ activeTab, onSelect }: { activeTab: SettingsTab; onSelect
     );
 }
 
-function ProfilePanel({ user, onUpdate, focusImage }: { user: any; onUpdate: (user: any) => void; focusImage?: boolean }) {
+type UserProfile = { displayName?: string; email?: string; imageUrl?: string };
+
+function ProfilePanel({ user, onUpdate, focusImage }: { user: UserProfile | null; onUpdate: (user: UserProfile) => void; focusImage?: boolean }) {
     const imageRef = useRef<HTMLDivElement>(null);
     const form = useAppForm({
         defaultValues: { name: user?.displayName || "", email: user?.email || "", imageUrl: user?.imageUrl || "" },
@@ -90,9 +92,10 @@ function ProfilePanel({ user, onUpdate, focusImage }: { user: any; onUpdate: (us
             onUpdate(updatedUser);
 
             setMessage({ type: "success", text: "Profile updated successfully!" });
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("[ProfilePanel] Update failed:", err);
-            const errorMsg = err.response?.data?.message || err.message || "Failed to update profile";
+            const error = err as { response?: { data?: { message?: string } }, message?: string };
+            const errorMsg = error.response?.data?.message || error.message || "Failed to update profile";
             setMessage({ type: "error", text: errorMsg });
         } finally {
             setIsLoading(false);
@@ -205,8 +208,9 @@ function SecurityPanel() {
             });
             setMessage({ type: "success", text: "Password changed successfully!" });
             form.reset();
-        } catch (err: any) {
-            setMessage({ type: "error", text: err.response?.data?.message || "Failed to change password" });
+        } catch (err: unknown) {
+            const error = err as { response?: { data?: { message?: string } } };
+            setMessage({ type: "error", text: error.response?.data?.message || "Failed to change password" });
         } finally {
             setIsLoading(false);
         }
@@ -421,27 +425,26 @@ function SettingsPageContent() {
     const focusImage = searchParams.get("focus") === "image";
 
     const [activeTab, setActiveTab] = useState<SettingsTab>(tabParam || "profile");
-    const [user, setUser] = useState<any>(null);
-
-    // Sync tab when URL search params change (e.g. clicking header avatar from another page)
-    useEffect(() => {
-        if (tabParam && tabParam !== activeTab) {
-            setActiveTab(tabParam);
+    const [prevTabParam, setPrevTabParam] = useState<SettingsTab | null>(tabParam);
+    
+    const [user, setUser] = useState<UserProfile | null>(() => {
+        if (typeof window !== "undefined") {
+            const stored = localStorage.getItem("user");
+            if (stored) return JSON.parse(stored) as UserProfile;
         }
-    }, [tabParam]);
+        return null;
+    });
 
-    useEffect(() => {
-        const storedUser = localStorage.getItem("user");
-        if (storedUser) {
-            setUser(JSON.parse(storedUser));
-        }
-    }, []);
+    if (tabParam !== prevTabParam) {
+        setPrevTabParam(tabParam);
+        if (tabParam) setActiveTab(tabParam);
+    }
 
     const panel = useMemo(() => {
         if (activeTab === "security") return <SecurityPanel />;
         if (activeTab === "notification") return <NotificationPanel />;
         return <ProfilePanel user={user} onUpdate={setUser} focusImage={focusImage} />;
-    }, [activeTab, user]);
+    }, [activeTab, user, focusImage]);
 
     return (
         <section className="w-full space-y-6">

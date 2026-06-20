@@ -8,9 +8,25 @@ import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { importSong, deleteSong, fetchSongs, updateSong, regenerateSongQr, getSongQrCode } from "@/lib/api/admin-dashboard";
-import { ChevronDown, Loader2, Plus, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { importSong, deleteSong, fetchSongs, updateSong, regenerateSongQr, getSongQrCode, importBulkSongs, exportSongsCsv } from "@/lib/api/admin-dashboard";
+import { ChevronDown, Download, Loader2, Plus, Search, Upload } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ColumnDef, SortingState } from "@tanstack/react-table";
+import { DataTable } from "@/components/ui/data-table";
+import { Skeleton } from "@/components/ui/skeleton";
+
+export function SkeletonTable() {
+  return (
+    <div className="flex w-full flex-col gap-4 py-4">
+      <Skeleton className="h-10 w-full rounded-md" />
+      {Array.from({ length: 5 }).map((_, index) => (
+        <div className="flex items-center gap-4" key={index}>
+          <Skeleton className="h-12 flex-1 rounded-md" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 type UiSong = {
     id: string;
@@ -20,24 +36,88 @@ type UiSong = {
     spotifyId: string;
 };
 
-const fallbackSongs: UiSong[] = [];
 
 export default function SongsPage() {
     const [songs, setSongs] = useState<UiSong[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [query, setQuery] = useState("");
     const [editingSong, setEditingSong] = useState<UiSong | null>(null);
     const [deletingSong, setDeletingSong] = useState<UiSong | null>(null);
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+    const [sorting, setSorting] = useState<SortingState>([]);
 
     const limit = 10;
 
-    const loadSongs = async (activePage: number, activeQuery: string) => {
+    const [isImporting, setIsImporting] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        setIsImporting(true);
+        const toastId = toast.loading("Parsing CSV and importing songs...");
+
+        try {
+            const text = await file.text();
+            const urlRegex = /https?:\/\/open\.spotify\.com\/track\/[a-zA-Z0-9]+/g;
+            const matches = text.match(urlRegex) || [];
+            
+            const uniqueUrls = Array.from(new Set(matches));
+
+            if (uniqueUrls.length === 0) {
+                toast.error("No valid Spotify URLs found in the CSV.", { id: toastId });
+                return;
+            }
+
+            toast.loading(`Found ${uniqueUrls.length} valid Spotify URLs. Importing...`, { id: toastId });
+
+            const result = await importBulkSongs(uniqueUrls);
+            toast.success(`Bulk import completed. Successful: ${result.successful}, Failed: ${result.failed}`, { id: toastId });
+            
+            setPage(1);
+            await loadSongs(1, query, sorting);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to bulk import songs";
+            toast.error(message, { id: toastId });
+        } finally {
+            setIsImporting(false);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
+    };
+
+    const handleExportCsv = async () => {
+        try {
+            const toastId = toast.loading("Generating CSV export...");
+            await exportSongsCsv();
+            toast.success("CSV Export successful!", { id: toastId });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to export CSV";
+            toast.error(message);
+        }
+    };
+
+    const loadSongs = async (activePage: number, activeQuery: string, activeSorting: SortingState) => {
         setIsLoading(true);
-        const response = await fetchSongs({ q: activeQuery || undefined, page: activePage, limit });
+        const sortBy = activeSorting.length > 0 ? activeSorting[0].id : undefined;
+        const sortOrder = activeSorting.length > 0 ? (activeSorting[0].desc ? 'DESC' : 'ASC') : undefined;
+
+        let mappedSortBy = sortBy;
+        if (sortBy === 'songName') mappedSortBy = 'name';
+        if (sortBy === 'ArtistName') mappedSortBy = 'artist';
+        if (sortBy === 'spotifyId') mappedSortBy = 'spotifyTrackId';
+
+        const response = await fetchSongs({ 
+            q: activeQuery || undefined, 
+            page: activePage, 
+            limit,
+            sortBy: mappedSortBy,
+            sortOrder,
+        });
 
         setSongs(
             response.items.map((song) => ({
@@ -48,7 +128,6 @@ export default function SongsPage() {
                 spotifyId: song.spotifyTrackId,
             })),
         );
-        setTotal(response.total);
         setTotalPages(response.totalPages || 1);
         setIsLoading(false);
     };
@@ -58,7 +137,7 @@ export default function SongsPage() {
 
         const run = async () => {
             try {
-                await loadSongs(page, query);
+                await loadSongs(page, query, sorting);
             } catch (error) {
                 if (!isMounted) {
                     return;
@@ -67,7 +146,6 @@ export default function SongsPage() {
                 const message = error instanceof Error ? error.message : "Failed to load songs";
                 toast.error(message);
                 setSongs([]);
-                setTotal(0);
                 setTotalPages(1);
             } finally {
                 if (isMounted) {
@@ -81,26 +159,16 @@ export default function SongsPage() {
         return () => {
             isMounted = false;
         };
-    }, [page, query]);
+    }, [page, query, sorting]);
 
-    const pageButtons = useMemo(() => {
-        if (totalPages <= 3) {
-            return Array.from({ length: totalPages }, (_, index) => index + 1);
-        }
 
-        const start = Math.min(Math.max(page - 1, 1), totalPages - 2);
-        return [start, start + 1, start + 2];
-    }, [page, totalPages]);
-
-    const startItem = total === 0 ? 0 : (page - 1) * limit + 1;
-    const endItem = Math.min(page * limit, total);
 
     const handleAddSong = async (payload: { spotifyUrl: string }) => {
         try {
             await importSong(payload.spotifyUrl);
             setIsAddDialogOpen(false);
             setPage(1);
-            await loadSongs(1, query);
+            await loadSongs(1, query, sorting);
             toast.success("Song successfully added!");
         } catch (error) {
             const message = error instanceof Error ? error.message : "Failed to add song";
@@ -132,7 +200,7 @@ export default function SongsPage() {
                 releaseYear: payload.releaseYear,
                 spotifyTrackId: payload.spotifyTrackId,
             });
-            await loadSongs(page, query);
+            await loadSongs(page, query, sorting);
             setEditingSong(null);
             toast.success("Song successfully updated!");
         } catch (error) {
@@ -148,7 +216,7 @@ export default function SongsPage() {
 
         try {
             await deleteSong(deletingSong.id);
-            await loadSongs(page, query);
+            await loadSongs(page, query, sorting);
             setDeletingSong(null);
             toast.success("Song successfully deleted!");
         } catch (error) {
@@ -192,6 +260,56 @@ export default function SongsPage() {
         }
     };
 
+    const columns: ColumnDef<UiSong>[] = useMemo(
+        () => [
+            {
+                accessorKey: "songName",
+                header: "Song Name",
+            },
+            {
+                accessorKey: "ArtistName",
+                header: "Artist Name",
+            },
+            {
+                accessorKey: "releaseYear",
+                header: "Release Year",
+            },
+            {
+                accessorKey: "spotifyId",
+                header: "Spotify ID",
+            },
+            {
+                id: "actions",
+                enableSorting: false,
+                header: "Action",
+                cell: ({ row }) => {
+                    const song = row.original;
+                    return (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="secondary" className="h-9 px-2 text-[16px]">
+                                    Action
+                                    <ChevronDown className="size-4" data-icon="inline-end" />
+                                </Button>
+                            </DropdownMenuTrigger>
+
+                            <DropdownMenuContent align="start" className="w-40">
+                                <DropdownMenuItem onClick={() => void handleEditSong(song)}>Edit</DropdownMenuItem>
+                                <DropdownMenuItem>Disable</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => void handleDownloadQr(song)}>Download QR</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => void handleRegenerateQr(song)}>Regenerate QR</DropdownMenuItem>
+                                <DropdownMenuItem variant="destructive" onClick={() => void handleDeleteSong(song)}>
+                                    Delete
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    );
+                },
+            },
+        ],
+        []
+    );
+
     return (
         <Dialog open={isAddDialogOpen} onOpenChange={(open) => setIsAddDialogOpen(open)}>
             <section className="w-full space-y-6">
@@ -220,25 +338,47 @@ export default function SongsPage() {
                         <Search className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
                     </div>
 
-                    <DialogTrigger asChild>
-                        <Button
-                            className="h-11.5 rounded-[5px] bg-black px-3 text-[16px] font-medium text-white hover:bg-black/95"
-                            onClick={() => setIsAddDialogOpen(true)}
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <input 
+                            type="file" 
+                            accept=".csv" 
+                            className="hidden" 
+                            ref={fileInputRef} 
+                            onChange={(e) => void handleFileUpload(e)} 
+                            disabled={isImporting}
+                        />
+                        <Button 
+                            variant="outline" 
+                            className="h-11.5 rounded-[5px] px-3 text-[16px] font-medium" 
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={isImporting}
                         >
-                            <Plus className="size-6" />
-                            Add New Song
+                            {isImporting ? <Loader2 className="size-4 animate-spin" data-icon="inline-start" /> : <Upload data-icon="inline-start" />}
+                            Bulk Upload
                         </Button>
-                    </DialogTrigger>
+                        <Button 
+                            variant="outline" 
+                            className="h-11.5 rounded-[5px] px-3 text-[16px] font-medium" 
+                            onClick={() => void handleExportCsv()}
+                        >
+                            <Download data-icon="inline-start" />
+                            Export CSV
+                        </Button>
+                        <DialogTrigger asChild>
+                            <Button
+                                className="h-11.5 rounded-[5px] bg-black px-3 text-[16px] font-medium text-white hover:bg-black/95"
+                                onClick={() => setIsAddDialogOpen(true)}
+                            >
+                                <Plus className="size-6" />
+                                Add New Song
+                            </Button>
+                        </DialogTrigger>
+                    </div>
                 </div>
 
                 <div className="space-y-3 md:hidden">
                     {isLoading && songs.length === 0 ? (
-                        <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
-                            <span className="inline-flex items-center gap-2">
-                                <Loader2 className="size-4 animate-spin" />
-                                Fetching latest songs...
-                            </span>
-                        </div>
+                        <SkeletonTable />
                     ) : null}
                     {songs.map((song) => (
                         <article key={`mobile-${song.id}`} className="rounded-lg border border-border bg-card p-4 shadow-sm">
@@ -269,114 +409,25 @@ export default function SongsPage() {
                     ))}
                 </div>
 
-                <div className="hidden w-full overflow-x-auto md:block">
-                    <div className="min-w-180">
-                        <table className="w-full table-fixed border-collapse">
-                            <thead>
-                                <tr className="h-11.5 bg-primary">
-                                    <th className="w-30 border border-border px-2 text-left text-base leading-normal font-medium text-primary-foreground">
-                                        Song Name
-                                    </th>
-                                    <th className="w-30 border border-border px-2 text-left text-base leading-normal font-medium text-primary-foreground">
-                                        Artist Name
-                                    </th>
-                                    <th className="w-15 border border-border px-2 text-left text-base leading-normal font-medium text-primary-foreground">
-                                        Release Year
-                                    </th>
-                                    <th className="w-30 border border-border px-2 text-left text-base leading-normal font-medium text-primary-foreground">
-                                        Spotify ID
-                                    </th>
-                                    <th className="w-10 border border-border px-2 text-left text-base leading-normal font-medium text-primary-foreground">
-                                        Action
-                                    </th>
-                                </tr>
-                            </thead>
-
-                            <tbody>
-                                {isLoading && songs.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={5} className="border border-border px-3 py-5 text-sm text-muted-foreground">
-                                            <span className="inline-flex items-center gap-2">
-                                                <Loader2 className="size-4 animate-spin" />
-                                                Fetching latest songs...
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ) : null}
-                                {songs.map((song) => (
-                                    <tr key={song.id} className="h-13">
-                                        <td className="border border-border px-2 text-sm leading-6 font-normal text-muted-foreground lg:text-[16px]">
-                                            {song.songName}
-                                        </td>
-                                        <td className="border border-border px-2 text-sm leading-6 font-normal text-muted-foreground lg:text-[16px]">
-                                            {song.ArtistName}
-                                        </td>
-                                        <td className="border border-border px-2 text-sm leading-[1.2] font-normal text-muted-foreground lg:text-[16px]">
-                                            {song.releaseYear}
-                                        </td>
-                                        <td className="border border-border px-2 text-sm leading-6 font-normal text-muted-foreground lg:text-[16px]">
-                                            {song.spotifyId}
-                                        </td>
-                                        <td className="border border-border px-2">
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger className="inline-flex h-9 items-center justify-center gap-1 rounded-[5px] bg-primary px-2 text-sm leading-[1.2] font-normal text-primary-foreground lg:text-[16px]">
-                                                    Action
-                                                    <ChevronDown className="size-4" />
-                                                </DropdownMenuTrigger>
-
-                                                <DropdownMenuContent align="start" className="w-40">
-                                                    <DropdownMenuItem onClick={() => void handleEditSong(song)}>Edit</DropdownMenuItem>
-                                                    <DropdownMenuItem>Disable</DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => void handleDownloadQr(song)}>Download QR</DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => void handleRegenerateQr(song)}>Regenerate QR</DropdownMenuItem>
-                                                    <DropdownMenuItem variant="destructive" onClick={() => void handleDeleteSong(song)}>
-                                                        Delete
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div className="flex flex-col gap-4 text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-                    <p className="px-2 text-sm leading-6 font-medium">
-                        Showing {startItem}-{endItem} out of {total}
-                    </p>
-
-                    <div className="flex items-center gap-2.5 px-2 py-1 text-sm leading-6 font-medium lg:text-[16px]">
-                        <button
-                            type="button"
-                            className="cursor-pointer px-1 py-0.5"
-                            onClick={() => setPage((previous) => Math.max(1, previous - 1))}
-                            disabled={page === 1}
-                        >
-                            Previous
-                        </button>
-                        {pageButtons.map((pageNumber) => (
-                            <button
-                                key={pageNumber}
-                                type="button"
-                                className={
-                                    pageNumber === page ? "h-6 w-6 bg-primary px-1 py-0.5 text-primary-foreground" : "h-6 w-6 px-1 py-0.5"
-                                }
-                                onClick={() => setPage(pageNumber)}
-                            >
-                                {pageNumber}
-                            </button>
-                        ))}
-                        <button
-                            type="button"
-                            className="cursor-pointer px-1 py-0.5"
-                            onClick={() => setPage((previous) => Math.min(totalPages, previous + 1))}
-                            disabled={page >= totalPages}
-                        >
-                            Next
-                        </button>
-                    </div>
+                <div className="hidden md:block">
+                    {isLoading && songs.length === 0 ? (
+                        <SkeletonTable />
+                    ) : (
+                        <DataTable 
+                            columns={columns} 
+                            data={songs} 
+                            pageCount={totalPages} 
+                            pagination={{ pageIndex: page - 1, pageSize: limit }}
+                            onPaginationChange={(newPagination) => {
+                                setPage(newPagination.pageIndex + 1);
+                            }}
+                            sorting={sorting}
+                            onSortingChange={(newSorting) => {
+                                setSorting(newSorting);
+                                setPage(1);
+                            }}
+                        />
+                    )}
                 </div>
 
                 <AddSongDialogContent onSongAdded={handleAddSong} />

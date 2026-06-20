@@ -151,6 +151,26 @@ export class SongsService {
     return await this.findOne(savedSong.id);
   }
 
+  async importSongsBulk(urls: string[], userId: string): Promise<{ successful: number; failed: number; errors: string[] }> {
+    let successful = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (const url of urls) {
+      if (!url || !url.trim()) continue;
+      try {
+        await this.importSong(url.trim(), userId);
+        successful++;
+      } catch (error) {
+        failed++;
+        errors.push(`Failed to import ${url}: ${error.message}`);
+        this.logger.warn(`Bulk import failed for URL ${url}: ${error.message}`);
+      }
+    }
+
+    return { successful, failed, errors };
+  }
+
   async regenerateQrCode(songId: string, userId: string): Promise<any> {
     const song = await this.findOne(songId);
 
@@ -304,5 +324,25 @@ export class SongsService {
         }),
       300, // Cache for 5 minutes
     );
+  }
+
+  async exportSongsToCsv(): Promise<string> {
+    const songs = await this.songRepository.find({
+      order: { createdAt: 'DESC' },
+    });
+
+    const header = ['ID', 'Name', 'Artist', 'Release Year', 'Spotify Track ID', 'Spotify URL', 'Plays', 'Created At'];
+    const rows = songs.map(song => [
+      song.id,
+      `"${song.name.replace(/"/g, '""')}"`,
+      `"${song.artist.replace(/"/g, '""')}"`,
+      song.releaseYear,
+      song.spotifyTrackId,
+      song.spotifyUrl,
+      song.plays,
+      song.createdAt.toISOString()
+    ]);
+
+    return [header.join(','), ...rows.map(row => row.join(','))].join('\n');
   }
 }

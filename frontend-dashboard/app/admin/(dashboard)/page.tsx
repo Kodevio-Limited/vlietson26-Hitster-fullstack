@@ -1,8 +1,9 @@
 "use client";
 
 import { fetchDashboardData, fetchAvailableQrCardsCount } from "@/lib/api/admin-dashboard";
-import { CircleHelp, Library, Loader2, Music2, QrCode } from "lucide-react";
+import { CircleHelp, Library, Music2, QrCode } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type StatCardData = {
     title: string;
@@ -48,6 +49,31 @@ function SongRow({ title, artist, year }: SongRowData) {
             </div>
 
             <p className="text-[20px] font-medium leading-normal text-[#333333]">{safeYear}</p>
+        </article>
+    );
+}
+
+export function SkeletonStatCard() {
+    return (
+        <article className="h-41 rounded-[10px] border border-[#dadada] bg-white px-8 py-5.75">
+            <Skeleton className="size-12.5 rounded-full" />
+            <Skeleton className="mt-3.5 h-4 w-24" />
+            <Skeleton className="mt-2 h-6 w-16" />
+        </article>
+    );
+}
+
+export function SkeletonSongRow() {
+    return (
+        <article className="flex h-27.5 items-center justify-between rounded-[10px] bg-white px-5 shadow-[0px_0px_4px_0px_rgba(0,0,0,0.25)]">
+            <div className="flex items-center gap-3">
+                <Skeleton className="size-15 rounded-[10px]" />
+                <div className="space-y-2">
+                    <Skeleton className="h-5 w-40" />
+                    <Skeleton className="h-4 w-24" />
+                </div>
+            </div>
+            <Skeleton className="h-6 w-12" />
         </article>
     );
 }
@@ -144,16 +170,16 @@ export default function Dashboard() {
 
     return (
         <section className="mx-auto w-full pb-10">
-            {isLoading ? (
-                <p className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin" />
-                    Loading dashboard data...
-                </p>
-            ) : null}
             <div className="grid grid-cols-1 gap-4.25 md:grid-cols-2 xl:grid-cols-4">
-                {statCards.map((card) => (
-                    <StatCard key={card.title} {...card} />
-                ))}
+                {isLoading ? (
+                    Array.from({ length: 4 }).map((_, index) => (
+                        <SkeletonStatCard key={index} />
+                    ))
+                ) : (
+                    statCards.map((card) => (
+                        <StatCard key={card.title} {...card} />
+                    ))
+                )}
             </div>
 
             <div className="mt-7.5 rounded-[20px] border border-[#dadada]">
@@ -163,14 +189,14 @@ export default function Dashboard() {
 
                 <div className="space-y-5 p-4 md:p-8">
                     {isLoading && recentSongs.length === 0 ? (
-                        <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                            <Loader2 className="size-4 animate-spin" />
-                            Fetching recent songs...
-                        </p>
-                    ) : null}
-                    {recentSongs.map((song, index) => (
-                        <SongRow key={`${song.title}-${index}`} {...song} />
-                    ))}
+                        Array.from({ length: 5 }).map((_, index) => (
+                            <SkeletonSongRow key={index} />
+                        ))
+                    ) : (
+                        recentSongs.map((song, index) => (
+                            <SongRow key={`${song.title}-${index}`} {...song} />
+                        ))
+                    )}
                 </div>
             </div>
         </section>

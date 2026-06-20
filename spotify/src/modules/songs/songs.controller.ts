@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Request, Res } from '@nestjs/common';
+import { Response } from 'express';
 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SongsService } from './songs.service';
@@ -36,6 +37,18 @@ export class SongsController {
     };
   }
 
+  @Post('import/bulk')
+  @UseGuards(AdminGuard)
+  async importSongsBulk(@Body() body: { urls: string[] }, @Request() req) {
+    const userId = req.user?.id || 'system';
+    const result = await this.songsService.importSongsBulk(body.urls, userId);
+    return {
+      success: true,
+      message: `Bulk import completed. Successful: ${result.successful}, Failed: ${result.failed}`,
+      data: result,
+    };
+  }
+
   @Post(':id/qr/regenerate')
   @UseGuards(AdminGuard)
   async regenerateQrCode(@Param('id') id: string, @Request() req) {
@@ -60,6 +73,15 @@ export class SongsController {
       success: true,
       data: qrCode,
     };
+  }
+
+  @Get('export/csv')
+  @UseGuards(AdminGuard)
+  async exportCsv(@Res() res: Response) {
+    const csvData = await this.songsService.exportSongsToCsv();
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=songs_export.csv');
+    res.send(csvData);
   }
 
   @Get()

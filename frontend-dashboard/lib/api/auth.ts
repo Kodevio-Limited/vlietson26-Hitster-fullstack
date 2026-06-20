@@ -1,4 +1,4 @@
-import { setAdminSessionCookie, clearAdminSessionCookie, loginRedirect, logoutRedirect } from "@/app/actions/auth-session";
+import { setAdminSessionCookie, clearAdminSessionCookie, loginRedirect } from "@/app/actions/auth-session";
 import { apiClient } from "./client";
 
 export async function getSpotifyAuthUrl(): Promise<string> {
@@ -6,8 +6,8 @@ export async function getSpotifyAuthUrl(): Promise<string> {
     return response.data.url;
 }
 
-export async function loginWithSpotify(code: string): Promise<{ jwtToken: string; user: any }> {
-    const response = await apiClient.post<{ jwtToken: string; user: any }>("/auth/spotify/login", { code });
+export async function loginWithSpotify(code: string): Promise<{ jwtToken: string; user: unknown }> {
+    const response = await apiClient.post<{ jwtToken: string; user: unknown }>("/auth/spotify/login", { code });
     
     // Save token to localStorage and cookies
     if (response.data.jwtToken) {

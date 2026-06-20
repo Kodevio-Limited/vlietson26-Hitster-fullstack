@@ -4,12 +4,11 @@ type QrMappingCardProps = {
     qrCodeId: string;
     songTitle: string;
     artist: string;
-    qrImageUrl?: string;
     onShowQr?: () => void;
     onDelete?: () => void;
 };
 
-export function QrMappingCard({ qrCodeId, songTitle, artist, qrImageUrl, onShowQr, onDelete }: QrMappingCardProps) {
+export function QrMappingCard({ qrCodeId, songTitle, artist, onShowQr, onDelete }: QrMappingCardProps) {
     return (
         <button
             type="button"

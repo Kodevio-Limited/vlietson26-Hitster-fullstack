@@ -13,21 +13,20 @@ export default function ForgotPassword() {
     const router = useRouter();
     const [isLoading, setIsLoading] = useState(false);
     const [email, setEmail] = useState("");
-    const [message, setMessage] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
         setError(null);
-        setMessage(null);
         try {
             await apiClient.post("/auth/forgot-password", { email });
             // Store email for verification step
             localStorage.setItem("reset_email", email);
             router.push("/admin/verification");
-        } catch (err: any) {
-            setError(err.response?.data?.message || "Failed to send verification code");
+        } catch (err: unknown) {
+            const error = err as { response?: { data?: { message?: string } } };
+            setError(error.response?.data?.message || "Failed to send verification code");
         } finally {
             setIsLoading(false);
         }
