@@ -1,5 +1,17 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Request, Res } from '@nestjs/common';
-import { Response } from 'express';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+  UseGuards,
+  Request,
+  Res,
+} from '@nestjs/common';
+import type { Response } from 'express';
 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SongsService } from './songs.service';
@@ -29,7 +41,10 @@ export class SongsController {
   @UseGuards(AdminGuard)
   async importSong(@Body() importSongDto: ImportSongDto, @Request() req) {
     const userId = req.user?.id || 'system'; // Assuming req.user exists from JwtAuthGuard
-    const song = await this.songsService.importSong(importSongDto.spotifyUrl, userId);
+    const song = await this.songsService.importSong(
+      importSongDto.spotifyUrl,
+      userId,
+    );
     return {
       success: true,
       message: 'Song imported successfully',
@@ -64,9 +79,12 @@ export class SongsController {
   @Get(':id/qr')
   async getQrCode(@Param('id') id: string) {
     const song = await this.songsService.findOne(id);
-    const mapping = song.mappings?.find(m => m.isActive);
+    const mapping = song.mappings?.find((m) => m.isActive);
     if (!mapping || !mapping.qrCode) {
-      return { success: false, message: 'No active QR code found for this song' };
+      return {
+        success: false,
+        message: 'No active QR code found for this song',
+      };
     }
     const qrCode = await this.songsService.getSongQrCode(id);
     return {
@@ -80,7 +98,10 @@ export class SongsController {
   async exportCsv(@Res() res: Response) {
     const csvData = await this.songsService.exportSongsToCsv();
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename=songs_export.csv');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename=songs_export.csv',
+    );
     res.send(csvData);
   }
 
@@ -94,7 +115,10 @@ export class SongsController {
   }
 
   @Get('spotify/search')
-  async searchSpotify(@Query('q') query: string, @Query('limit') limit: number = 10) {
+  async searchSpotify(
+    @Query('q') query: string,
+    @Query('limit') limit: number = 10,
+  ) {
     const results = await this.songsService.searchSpotify(query, limit);
     return {
       success: true,

@@ -30,7 +30,7 @@ export class SpotifyService {
           'grant_type=client_credentials',
           {
             headers: {
-              'Authorization': `Basic ${auth}`,
+              Authorization: `Basic ${auth}`,
               'Content-Type': 'application/x-www-form-urlencoded',
             },
           },
@@ -38,11 +38,11 @@ export class SpotifyService {
       );
 
       this.accessToken = response.data.access_token;
-      this.tokenExpiry = Date.now() + (response.data.expires_in * 1000);
+      this.tokenExpiry = Date.now() + response.data.expires_in * 1000;
       this.logger.log('Spotify access token obtained successfully');
       return this.accessToken;
     } catch (error) {
-      const err = error as any;
+      const err = error;
       this.logger.error('Failed to get Spotify access token', err.message);
       throw new HttpException(
         'Failed to authenticate with Spotify API',
@@ -53,12 +53,12 @@ export class SpotifyService {
 
   async searchTracks(query: string, limit: number = 10): Promise<any[]> {
     const token = await this.getAccessToken();
-    
+
     try {
       const response = await firstValueFrom(
         this.httpService.get('https://api.spotify.com/v1/search', {
           headers: {
-            'Authorization': `Bearer ${token}`,
+            Authorization: `Bearer ${token}`,
           },
           params: {
             q: query,
@@ -68,11 +68,11 @@ export class SpotifyService {
         }),
       );
 
-      return response.data.tracks.items.map(track => ({
+      return response.data.tracks.items.map((track) => ({
         id: track.id,
         name: track.name,
-        artist: track.artists.map(a => a.name).join(', '),
-        artists: track.artists.map(a => ({ id: a.id, name: a.name })),
+        artist: track.artists.map((a) => a.name).join(', '),
+        artists: track.artists.map((a) => ({ id: a.id, name: a.name })),
         album: track.album.name,
         albumId: track.album.id,
         albumImage: track.album.images[0]?.url,
@@ -85,7 +85,7 @@ export class SpotifyService {
         explicit: track.explicit,
       }));
     } catch (error) {
-      const err = error as any;
+      const err = error;
       this.logger.error(`Failed to search tracks: ${query}`, err.message);
       throw new HttpException(
         'Failed to search tracks on Spotify',
@@ -96,12 +96,12 @@ export class SpotifyService {
 
   async getTrackById(trackId: string): Promise<any> {
     const token = await this.getAccessToken();
-    
+
     try {
       const response = await firstValueFrom(
         this.httpService.get(`https://api.spotify.com/v1/tracks/${trackId}`, {
           headers: {
-            'Authorization': `Bearer ${token}`,
+            Authorization: `Bearer ${token}`,
           },
         }),
       );
@@ -110,8 +110,8 @@ export class SpotifyService {
       return {
         id: track.id,
         name: track.name,
-        artist: track.artists.map(a => a.name).join(', '),
-        artists: track.artists.map(a => ({ id: a.id, name: a.name })),
+        artist: track.artists.map((a) => a.name).join(', '),
+        artists: track.artists.map((a) => ({ id: a.id, name: a.name })),
         album: track.album.name,
         albumId: track.album.id,
         albumImage: track.album.images[0]?.url,
@@ -123,9 +123,12 @@ export class SpotifyService {
         explicit: track.explicit,
       };
     } catch (error) {
-      const err = error as any;
+      const err = error;
       if (err.response?.status === 404) {
-        throw new HttpException('Track not found on Spotify', HttpStatus.NOT_FOUND);
+        throw new HttpException(
+          'Track not found on Spotify',
+          HttpStatus.NOT_FOUND,
+        );
       }
       this.logger.error(`Failed to get track: ${trackId}`, err.message);
       throw new HttpException(
@@ -138,27 +141,27 @@ export class SpotifyService {
   async getSeveralTracks(trackIds: string[]): Promise<any[]> {
     const token = await this.getAccessToken();
     const ids = trackIds.join(',');
-    
+
     try {
       const response = await firstValueFrom(
         this.httpService.get(`https://api.spotify.com/v1/tracks`, {
           headers: {
-            'Authorization': `Bearer ${token}`,
+            Authorization: `Bearer ${token}`,
           },
           params: { ids },
         }),
       );
 
-      return response.data.tracks.map(track => ({
+      return response.data.tracks.map((track) => ({
         id: track.id,
         name: track.name,
-        artist: track.artists.map(a => a.name).join(', '),
+        artist: track.artists.map((a) => a.name).join(', '),
         albumImage: track.album.images[0]?.url,
         spotifyUrl: track.external_urls.spotify,
         previewUrl: track.preview_url,
       }));
     } catch (error) {
-      const err = error as any;
+      const err = error;
       this.logger.error(`Failed to get several tracks`, err.message);
       throw new HttpException(
         'Failed to get tracks from Spotify',
@@ -169,25 +172,28 @@ export class SpotifyService {
 
   async getAlbumTracks(albumId: string): Promise<any[]> {
     const token = await this.getAccessToken();
-    
+
     try {
       const response = await firstValueFrom(
-        this.httpService.get(`https://api.spotify.com/v1/albums/${albumId}/tracks`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
+        this.httpService.get(
+          `https://api.spotify.com/v1/albums/${albumId}/tracks`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            params: { limit: 50 },
           },
-          params: { limit: 50 },
-        }),
+        ),
       );
 
-      return response.data.items.map(track => ({
+      return response.data.items.map((track) => ({
         id: track.id,
         name: track.name,
         duration: track.duration_ms,
         trackNumber: track.track_number,
       }));
     } catch (error) {
-      const err = error as any;
+      const err = error;
       this.logger.error(`Failed to get album tracks: ${albumId}`, err.message);
       throw new HttpException(
         'Failed to get album tracks from Spotify',

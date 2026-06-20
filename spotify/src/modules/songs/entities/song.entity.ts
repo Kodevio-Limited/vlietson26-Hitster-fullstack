@@ -1,4 +1,12 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany, Index } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+  Index,
+} from 'typeorm';
 import { Mapping } from '../../mappings/entities/mapping.entity';
 
 @Entity('songs')
@@ -19,13 +27,23 @@ export class Song {
   @Column({ type: 'integer', name: 'release_year' })
   releaseYear: number;
 
-  @Column({ type: 'varchar', length: 255, unique: true, name: 'spotify_track_id' })
+  @Column({
+    type: 'varchar',
+    length: 255,
+    unique: true,
+    name: 'spotify_track_id',
+  })
   spotifyTrackId: string;
 
   @Column({ type: 'varchar', length: 500, nullable: true, name: 'spotify_url' })
   spotifyUrl: string;
 
-  @Column({ type: 'varchar', length: 500, nullable: true, name: 'album_image_url' })
+  @Column({
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+    name: 'album_image_url',
+  })
   albumImageUrl: string;
 
   @Column({ type: 'varchar', length: 500, nullable: true, name: 'preview_url' })

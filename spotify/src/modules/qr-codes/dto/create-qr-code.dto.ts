@@ -1,4 +1,11 @@
-import { IsString, IsNotEmpty, IsUrl, IsOptional, Matches, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsUrl,
+  IsOptional,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateQrCodeDto {
   @IsUrl()

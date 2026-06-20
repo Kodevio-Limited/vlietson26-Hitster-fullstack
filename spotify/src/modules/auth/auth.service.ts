@@ -1,4 +1,10 @@
-import { Injectable, UnauthorizedException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  ConflictException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -46,13 +52,15 @@ export class AuthService {
     )}&redirect_uri=${encodeURIComponent(redirectUri)}`;
   }
 
-  async spotifyLogin(authCode: string): Promise<{ jwtToken: string; user: Partial<User> }> {
+  async spotifyLogin(
+    authCode: string,
+  ): Promise<{ jwtToken: string; user: Partial<User> }> {
     // Exchange auth code for Spotify tokens
     const spotifyTokens = await this.exchangeSpotifyCode(authCode);
-    
+
     // Get Spotify user info
     const spotifyUser = await this.getSpotifyUser(spotifyTokens.access_token);
-    
+
     // Find or create user in database
     let user = await this.userRepository.findOne({
       where: { spotifyId: spotifyUser.id },
@@ -61,7 +69,7 @@ export class AuthService {
     if (!user) {
       // Check if this email is an admin
       const isAdmin = this.isAdminEmail(spotifyUser.email);
-      
+
       user = this.userRepository.create({
         email: spotifyUser.email,
         spotifyId: spotifyUser.id,
@@ -69,7 +77,9 @@ export class AuthService {
         role: isAdmin ? 'admin' : 'user',
         spotifyAccessToken: spotifyTokens.access_token,
         spotifyRefreshToken: spotifyTokens.refresh_token,
-        spotifyTokenExpiresAt: new Date(Date.now() + spotifyTokens.expires_in * 1000),
+        spotifyTokenExpiresAt: new Date(
+          Date.now() + spotifyTokens.expires_in * 1000,
+        ),
         hasPremium: spotifyUser.product === 'premium',
         lastLoginAt: new Date(),
       });
@@ -77,13 +87,15 @@ export class AuthService {
       // Update existing user's tokens
       user.spotifyAccessToken = spotifyTokens.access_token;
       user.spotifyRefreshToken = spotifyTokens.refresh_token;
-      user.spotifyTokenExpiresAt = new Date(Date.now() + spotifyTokens.expires_in * 1000);
+      user.spotifyTokenExpiresAt = new Date(
+        Date.now() + spotifyTokens.expires_in * 1000,
+      );
       user.hasPremium = spotifyUser.product === 'premium';
       user.lastLoginAt = new Date();
     }
-    
+
     await this.userRepository.save(user);
-    
+
     // Generate JWT token
     const jwtToken = this.jwtService.sign({
       sub: user.id,
@@ -91,7 +103,7 @@ export class AuthService {
       role: user.role,
       spotifyId: user.spotifyId,
     });
-    
+
     // Return JWT and user info (excluding sensitive tokens)
     const { spotifyAccessToken, spotifyRefreshToken, ...safeUser } = user;
     return { jwtToken, user: safeUser };
@@ -109,21 +121,26 @@ export class AuthService {
           new URLSearchParams({
             grant_type: 'authorization_code',
             code: code,
-            redirect_uri: this.configService.get<string>('spotify.redirectUri')!,
+            redirect_uri: this.configService.get<string>(
+              'spotify.redirectUri',
+            )!,
           }).toString(),
           {
             headers: {
-              'Authorization': `Basic ${auth}`,
+              Authorization: `Basic ${auth}`,
               'Content-Type': 'application/x-www-form-urlencoded',
             },
           },
         ),
       );
-      
+
       return response.data;
     } catch (error) {
-      const err = error as any;
-      console.error('Spotify token exchange error:', err.response?.data || err.message);
+      const err = error;
+      console.error(
+        'Spotify token exchange error:',
+        err.response?.data || err.message,
+      );
       throw new UnauthorizedException('Failed to authenticate with Spotify');
     }
   }
@@ -132,7 +149,7 @@ export class AuthService {
     try {
       const response = await firstValueFrom(
         this.httpService.get('https://api.spotify.com/v1/me', {
-          headers: { 'Authorization': `Bearer ${accessToken}` },
+          headers: { Authorization: `Bearer ${accessToken}` },
         }),
       );
       return response.data;
@@ -170,7 +187,7 @@ export class AuthService {
           }).toString(),
           {
             headers: {
-              'Authorization': `Basic ${auth}`,
+              Authorization: `Basic ${auth}`,
               'Content-Type': 'application/x-www-form-urlencoded',
             },
           },
@@ -178,7 +195,9 @@ export class AuthService {
       );
 
       user.spotifyAccessToken = response.data.access_token;
-      user.spotifyTokenExpiresAt = new Date(Date.now() + response.data.expires_in * 1000);
+      user.spotifyTokenExpiresAt = new Date(
+        Date.now() + response.data.expires_in * 1000,
+      );
       if (response.data.refresh_token) {
         user.spotifyRefreshToken = response.data.refresh_token;
       }
@@ -190,7 +209,9 @@ export class AuthService {
     }
   }
 
-  async login(loginDto: LoginDto): Promise<{ jwtToken: string; user: Partial<User> }> {
+  async login(
+    loginDto: LoginDto,
+  ): Promise<{ jwtToken: string; user: Partial<User> }> {
     const user = await this.userRepository.findOne({
       where: { email: loginDto.email },
     });
@@ -199,7 +220,10 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+    const isPasswordValid = await bcrypt.compare(
+      loginDto.password,
+      user.password,
+    );
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -211,11 +235,14 @@ export class AuthService {
       spotifyId: user.spotifyId,
     });
 
-    const { password, spotifyAccessToken, spotifyRefreshToken, ...safeUser } = user;
+    const { password, spotifyAccessToken, spotifyRefreshToken, ...safeUser } =
+      user;
     return { jwtToken, user: safeUser };
   }
 
-  async register(registerDto: RegisterDto): Promise<{ jwtToken: string; user: Partial<User> }> {
+  async register(
+    registerDto: RegisterDto,
+  ): Promise<{ jwtToken: string; user: Partial<User> }> {
     const existingUser = await this.userRepository.findOne({
       where: { email: registerDto.email },
     });
@@ -244,15 +271,21 @@ export class AuthService {
       spotifyId: user.spotifyId,
     });
 
-    const { password, spotifyAccessToken, spotifyRefreshToken, ...safeUser } = user;
+    const { password, spotifyAccessToken, spotifyRefreshToken, ...safeUser } =
+      user;
     return { jwtToken, user: safeUser };
   }
 
-  async forgotPassword(email: string): Promise<{ message: string; otp?: string }> {
+  async forgotPassword(
+    email: string,
+  ): Promise<{ message: string; otp?: string }> {
     const user = await this.userRepository.findOne({ where: { email } });
     if (!user) {
       // For security, don't reveal if user exists
-      return { message: 'If an account with that email exists, we have sent a verification code.' };
+      return {
+        message:
+          'If an account with that email exists, we have sent a verification code.',
+      };
     }
 
     // Generate 6-digit OTP using a CSPRNG. Math.random() is predictable
@@ -291,15 +324,21 @@ export class AuthService {
     return { token: resetToken };
   }
 
-  async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<{ message: string }> {
+  async resetPassword(
+    resetPasswordDto: ResetPasswordDto,
+  ): Promise<{ message: string }> {
     const user = await this.userRepository.findOne({
-      where: { 
-        email: resetPasswordDto.email, 
-        resetToken: resetPasswordDto.token 
+      where: {
+        email: resetPasswordDto.email,
+        resetToken: resetPasswordDto.token,
       },
     });
 
-    if (!user || !user.resetTokenExpiresAt || user.resetTokenExpiresAt < new Date()) {
+    if (
+      !user ||
+      !user.resetTokenExpiresAt ||
+      user.resetTokenExpiresAt < new Date()
+    ) {
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
@@ -312,7 +351,10 @@ export class AuthService {
     return { message: 'Password has been reset successfully.' };
   }
 
-  async updateProfile(userId: string, updateDto: { name: string; imageUrl?: string }): Promise<Partial<User>> {
+  async updateProfile(
+    userId: string,
+    updateDto: { name: string; imageUrl?: string },
+  ): Promise<Partial<User>> {
     this.logger.log(`Updating profile for user ${userId}`);
     const user = await this.getCurrentUser(userId);
 
@@ -322,11 +364,21 @@ export class AuthService {
     }
     await this.userRepository.save(user);
 
-    const { password, spotifyAccessToken, spotifyRefreshToken, verificationCode, resetToken, ...safeUser } = user;
+    const {
+      password,
+      spotifyAccessToken,
+      spotifyRefreshToken,
+      verificationCode,
+      resetToken,
+      ...safeUser
+    } = user;
     return safeUser;
   }
 
-  async changePassword(userId: string, changePasswordDto: ChangePasswordDto): Promise<{ message: string }> {
+  async changePassword(
+    userId: string,
+    changePasswordDto: ChangePasswordDto,
+  ): Promise<{ message: string }> {
     const user = await this.getCurrentUser(userId);
 
     // Handle password change with explicit current password verification.
@@ -352,7 +404,9 @@ export class AuthService {
           message: 'Your account password was changed successfully.',
         });
       } catch (error) {
-        this.logger.warn(`Failed to create password change notification: ${error.message}`);
+        this.logger.warn(
+          `Failed to create password change notification: ${error.message}`,
+        );
       }
 
       return { message: 'Password changed successfully.' };
@@ -365,11 +419,11 @@ export class AuthService {
     const user = await this.userRepository.findOne({
       where: { id: userId },
     });
-    
+
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
-    
+
     return user;
   }
 }

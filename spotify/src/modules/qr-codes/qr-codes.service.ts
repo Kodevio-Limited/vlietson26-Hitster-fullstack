@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -23,7 +28,9 @@ export class QrCodesService {
     });
 
     if (existing) {
-      throw new ConflictException(`QR Code with identifier ${createDto.identifier} already exists`);
+      throw new ConflictException(
+        `QR Code with identifier ${createDto.identifier} already exists`,
+      );
     }
 
     // Determine Spotify URL
@@ -33,7 +40,9 @@ export class QrCodesService {
     }
 
     if (!spotifyUrl) {
-      throw new ConflictException('Either spotifyUrl or spotifyTrackId must be provided');
+      throw new ConflictException(
+        'Either spotifyUrl or spotifyTrackId must be provided',
+      );
     }
 
     // Generate QR code image as base64
@@ -72,7 +81,7 @@ export class QrCodesService {
 
     const savedQrCode = await this.qrCodeRepository.save(qrCode);
     this.logger.log(`QR Code generated: ${savedQrCode.identifier}`);
-    
+
     return savedQrCode;
   }
 
@@ -81,7 +90,7 @@ export class QrCodesService {
       order: { createdAt: 'DESC' },
     });
   }
-  
+
   async findOne(id: string): Promise<QrCode> {
     const qrCode = await this.qrCodeRepository.findOne({
       where: { id },
@@ -96,7 +105,7 @@ export class QrCodesService {
         isActive: true,
         scans: true,
         createdAt: true,
-      }
+      },
     });
 
     if (!qrCode) {
@@ -123,7 +132,9 @@ export class QrCodesService {
     });
 
     if (!qrCode) {
-      throw new NotFoundException(`QR Code with identifier ${identifier} not found`);
+      throw new NotFoundException(
+        `QR Code with identifier ${identifier} not found`,
+      );
     }
 
     return qrCode;
@@ -175,12 +186,14 @@ export class QrCodesService {
 
   async getStats(): Promise<any> {
     const total = await this.qrCodeRepository.count();
-    const active = await this.qrCodeRepository.count({ where: { isActive: true } });
+    const active = await this.qrCodeRepository.count({
+      where: { isActive: true },
+    });
     const totalScans = await this.qrCodeRepository
       .createQueryBuilder('qr_code')
       .select('SUM(scans)', 'total')
       .getRawOne();
-    
+
     return {
       total,
       active,

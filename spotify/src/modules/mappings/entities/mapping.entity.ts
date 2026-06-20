@@ -1,4 +1,12 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+  Index,
+} from 'typeorm';
 import { Song } from '../../songs/entities/song.entity';
 import { QrCode } from '../../qr-codes/entities/qr-code.entity';
 import { QrCard } from '../../qr-cards/entities/qr-card.entity';

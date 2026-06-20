@@ -1,4 +1,11 @@
-import { Injectable, NotFoundException, ConflictException, Logger, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  Logger,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, FindOptionsWhere } from 'typeorm';
 import { Song } from './entities/song.entity';
@@ -34,14 +41,20 @@ export class SongsService {
     });
 
     if (existingSong) {
-      throw new ConflictException('Song with this Spotify Track ID already exists');
+      throw new ConflictException(
+        'Song with this Spotify Track ID already exists',
+      );
     }
 
     // Fetch additional track info from Spotify
     let spotifyInfo: any = null;
     try {
-      spotifyInfo = await this.spotifyService.getTrackById(createSongDto.spotifyTrackId);
-      this.logger.log(`Fetched Spotify info for track: ${createSongDto.spotifyTrackId}`);
+      spotifyInfo = await this.spotifyService.getTrackById(
+        createSongDto.spotifyTrackId,
+      );
+      this.logger.log(
+        `Fetched Spotify info for track: ${createSongDto.spotifyTrackId}`,
+      );
     } catch (error) {
       this.logger.warn(`Could not fetch Spotify info: ${error.message}`);
     }
@@ -63,7 +76,7 @@ export class SongsService {
       metadata: { songId: savedSong.id },
     });
     this.logger.log(`Song created: ${savedSong.name} by ${savedSong.artist}`);
-    
+
     return savedSong;
   }
 
@@ -91,7 +104,9 @@ export class SongsService {
     });
 
     if (song) {
-       throw new ConflictException(`This song is already imported (ID: ${song.spotifyTrackId})`);
+      throw new ConflictException(
+        `This song is already imported (ID: ${song.spotifyTrackId})`,
+      );
     }
 
     // Fetch track info from Spotify
@@ -99,17 +114,19 @@ export class SongsService {
     try {
       spotifyInfo = await this.spotifyService.getTrackById(trackId);
     } catch (error) {
-      throw new ConflictException(`Could not fetch info from Spotify: ${error.message}`);
+      throw new ConflictException(
+        `Could not fetch info from Spotify: ${error.message}`,
+      );
     }
 
     let releaseYear = new Date().getFullYear();
     if (spotifyInfo.album && spotifyInfo.album.release_date) {
-        const yearMatch = spotifyInfo.album.release_date.match(/^(\d{4})/);
-        if (yearMatch) {
-            releaseYear = parseInt(yearMatch[1], 10);
-        }
+      const yearMatch = spotifyInfo.album.release_date.match(/^(\d{4})/);
+      if (yearMatch) {
+        releaseYear = parseInt(yearMatch[1], 10);
+      }
     } else if (spotifyInfo.albumId) {
-        releaseYear = new Date().getFullYear(); // Fallback if no album release date is given by simple track fetch
+      releaseYear = new Date().getFullYear(); // Fallback if no album release date is given by simple track fetch
     }
 
     song = this.songRepository.create({
@@ -134,10 +151,13 @@ export class SongsService {
     });
 
     // Create Mapping
-    await this.mappingsService.create({
-      songId: savedSong.id,
-      qrCodeId: qrCode.id,
-    }, userId);
+    await this.mappingsService.create(
+      {
+        songId: savedSong.id,
+        qrCodeId: qrCode.id,
+      },
+      userId,
+    );
 
     this.cacheService.invalidatePattern('songs:*');
     await this.notificationsService.create({
@@ -147,11 +167,14 @@ export class SongsService {
       message: `"${savedSong.name}" by ${savedSong.artist} was imported.`,
       metadata: { songId: savedSong.id },
     });
-    
+
     return await this.findOne(savedSong.id);
   }
 
-  async importSongsBulk(urls: string[], userId: string): Promise<{ successful: number; failed: number; errors: string[] }> {
+  async importSongsBulk(
+    urls: string[],
+    userId: string,
+  ): Promise<{ successful: number; failed: number; errors: string[] }> {
     let successful = 0;
     let failed = 0;
     const errors: string[] = [];
@@ -178,10 +201,10 @@ export class SongsService {
     const mappings = await this.mappingsService.findBySong(songId);
     for (const mapping of mappings) {
       if (mapping.isActive) {
-         await this.mappingsService.deactivate(mapping.id);
-         if (mapping.qrCode) {
-           await this.qrCodesService.deactivate(mapping.qrCode.id);
-         }
+        await this.mappingsService.deactivate(mapping.id);
+        if (mapping.qrCode) {
+          await this.qrCodesService.deactivate(mapping.qrCode.id);
+        }
       }
     }
 
@@ -189,30 +212,47 @@ export class SongsService {
     const identifier = randomUUID().replace(/-/g, '').substring(0, 10);
     const newQrCode = await this.qrCodesService.generateQrCode({
       identifier,
-      spotifyUrl: song.spotifyUrl || `https://open.spotify.com/track/${song.spotifyTrackId}`,
+      spotifyUrl:
+        song.spotifyUrl ||
+        `https://open.spotify.com/track/${song.spotifyTrackId}`,
       spotifyTrackId: song.spotifyTrackId,
     });
 
     // Create new Mapping
-    await this.mappingsService.create({
-      songId: song.id,
-      qrCodeId: newQrCode.id,
-    }, userId);
+    await this.mappingsService.create(
+      {
+        songId: song.id,
+        qrCodeId: newQrCode.id,
+      },
+      userId,
+    );
 
     return newQrCode;
   }
 
   async getSongQrCode(songId: string): Promise<any> {
     const song = await this.findOne(songId);
-    const mapping = song.mappings?.find(m => m.isActive);
+    const mapping = song.mappings?.find((m) => m.isActive);
     if (!mapping || !mapping.qrCode) {
       throw new NotFoundException('No active QR code found for this song');
     }
     return await this.qrCodesService.findOne(mapping.qrCode.id);
   }
 
-  async findAll(searchDto: SearchSongDto): Promise<{ items: Song[]; total: number; page: number; limit: number; totalPages: number }> {
-    const { q, page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'DESC' } = searchDto;
+  async findAll(searchDto: SearchSongDto): Promise<{
+    items: Song[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
+    const {
+      q,
+      page = 1,
+      limit = 10,
+      sortBy = 'createdAt',
+      sortOrder = 'DESC',
+    } = searchDto;
     const safeLimit = Math.min(limit, 100);
     const where: FindOptionsWhere<Song> = {};
 
@@ -251,11 +291,16 @@ export class SongsService {
 
   async update(id: string, updateSongDto: UpdateSongDto): Promise<Song> {
     const song = await this.findOne(id);
-    
+
     // If Spotify Track ID is being updated, fetch new info
-    if (updateSongDto.spotifyTrackId && updateSongDto.spotifyTrackId !== song.spotifyTrackId) {
+    if (
+      updateSongDto.spotifyTrackId &&
+      updateSongDto.spotifyTrackId !== song.spotifyTrackId
+    ) {
       try {
-        const spotifyInfo = await this.spotifyService.getTrackById(updateSongDto.spotifyTrackId);
+        const spotifyInfo = await this.spotifyService.getTrackById(
+          updateSongDto.spotifyTrackId,
+        );
         song.spotifyUrl = spotifyInfo?.spotifyUrl;
         song.albumImageUrl = spotifyInfo?.albumImage;
         song.previewUrl = spotifyInfo?.previewUrl;
@@ -269,7 +314,7 @@ export class SongsService {
     const updatedSong = await this.songRepository.save(song);
     this.cacheService.invalidatePattern('songs:*');
     this.logger.log(`Song updated: ${updatedSong.name}`);
-    
+
     return updatedSong;
   }
 
@@ -306,7 +351,15 @@ export class SongsService {
         this.songRepository.find({
           order: { plays: 'DESC' },
           take: limit,
-          select: ['id', 'name', 'artist', 'spotifyTrackId', 'albumImageUrl', 'plays', 'createdAt'],
+          select: [
+            'id',
+            'name',
+            'artist',
+            'spotifyTrackId',
+            'albumImageUrl',
+            'plays',
+            'createdAt',
+          ],
         }),
       300, // Cache for 5 minutes
     );
@@ -320,7 +373,15 @@ export class SongsService {
         this.songRepository.find({
           order: { createdAt: 'DESC' },
           take: limit,
-          select: ['id', 'name', 'artist', 'releaseYear', 'spotifyTrackId', 'albumImageUrl', 'createdAt'],
+          select: [
+            'id',
+            'name',
+            'artist',
+            'releaseYear',
+            'spotifyTrackId',
+            'albumImageUrl',
+            'createdAt',
+          ],
         }),
       300, // Cache for 5 minutes
     );
@@ -331,8 +392,17 @@ export class SongsService {
       order: { createdAt: 'DESC' },
     });
 
-    const header = ['ID', 'Name', 'Artist', 'Release Year', 'Spotify Track ID', 'Spotify URL', 'Plays', 'Created At'];
-    const rows = songs.map(song => [
+    const header = [
+      'ID',
+      'Name',
+      'Artist',
+      'Release Year',
+      'Spotify Track ID',
+      'Spotify URL',
+      'Plays',
+      'Created At',
+    ];
+    const rows = songs.map((song) => [
       song.id,
       `"${song.name.replace(/"/g, '""')}"`,
       `"${song.artist.replace(/"/g, '""')}"`,
@@ -340,9 +410,9 @@ export class SongsService {
       song.spotifyTrackId,
       song.spotifyUrl,
       song.plays,
-      song.createdAt.toISOString()
+      song.createdAt.toISOString(),
     ]);
 
-    return [header.join(','), ...rows.map(row => row.join(','))].join('\n');
+    return [header.join(','), ...rows.map((row) => row.join(','))].join('\n');
   }
 }

@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { QrCardsService } from './qr-cards.service';
 import { CreateQrCardDto } from './dto/create-qr-card.dto';
 import { UpdateQrCardDto } from './dto/update-qr-card.dto';
@@ -32,10 +42,11 @@ export class QrCardsController {
 
   @Get('available')
   async getAvailable() {
-    const cards = await this.qrCardsService.getAvailableCards();
+    const count = await this.qrCardsService.getAvailableCardsCount();
     return {
       success: true,
-      data: cards,
+      data: [],
+      count,
     };
   }
 
@@ -49,7 +60,10 @@ export class QrCardsController {
   }
 
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() updateQrCardDto: UpdateQrCardDto) {
+  async update(
+    @Param('id') id: string,
+    @Body() updateQrCardDto: UpdateQrCardDto,
+  ) {
     const qrCard = await this.qrCardsService.update(id, updateQrCardDto);
     return {
       success: true,

@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { QrCard } from './entities/qr-card.entity';
@@ -20,7 +25,9 @@ export class QrCardsService {
     });
 
     if (existing) {
-      throw new ConflictException(`QR Card with ID ${createDto.cardId} already exists`);
+      throw new ConflictException(
+        `QR Card with ID ${createDto.cardId} already exists`,
+      );
     }
 
     const qrCard = this.qrCardRepository.create({
@@ -77,10 +84,9 @@ export class QrCardsService {
     this.logger.log(`QR Card deleted: ${qrCard.cardId}`);
   }
 
-  async getAvailableCards(): Promise<QrCard[]> {
-    return await this.qrCardRepository.find({
+  async getAvailableCardsCount(): Promise<number> {
+    return await this.qrCardRepository.count({
       where: { status: 'active' },
-      order: { cardId: 'ASC' },
     });
   }
 }

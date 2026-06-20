@@ -17,7 +17,7 @@ export class MailService {
       });
     } catch (error) {
       console.error('Failed to send email:', error);
-      // We don't throw here to avoid breaking the auth flow if email fails, 
+      // We don't throw here to avoid breaking the auth flow if email fails,
       // but in production you might want to.
     }
   }

@@ -39,6 +39,7 @@ type SongsResponse = {
 type QrCardsResponse = {
     success: boolean;
     data: Array<{ id: string; cardId: string }>;
+    count?: number;
 };
 
 type QrCodesResponse = {
@@ -117,7 +118,7 @@ export async function fetchMappings(params?: { page?: number; limit?: number }):
 
 export async function fetchAvailableQrCardsCount(): Promise<number> {
     const response = await apiClient.get<QrCardsResponse>("/qr-cards/available");
-    return response.data.data.length;
+    return response.data.count ?? response.data.data.length;
 }
 
 export async function fetchQrCodes(): Promise<Array<{ id: string; identifier: string; imageUrl?: string; redirectUrl?: string }>> {

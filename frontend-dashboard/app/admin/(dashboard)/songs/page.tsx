@@ -1,8 +1,4 @@
 "use client";
-
-import { AddSongDialogContent } from "@/components/dashboard/add-song-dialog-content";
-import { DeleteSongDialogContent } from "@/components/dashboard/delete-song-dialog-content";
-import { EditSongDialogContent } from "@/components/dashboard/edit-song-dialog-content";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -12,7 +8,7 @@ import { importSong, deleteSong, fetchSongs, updateSong, regenerateSongQr, getSo
 import { ChevronDown, Download, Loader2, Plus, Search, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ColumnDef, SortingState } from "@tanstack/react-table";
-import { DataTable } from "@/components/ui/data-table";
+
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function SkeletonTable() {
@@ -27,6 +23,13 @@ export function SkeletonTable() {
     </div>
   );
 }
+
+import dynamic from "next/dynamic";
+import { DataTable } from "@/components/ui/data-table";
+
+const AddSongDialogContent = dynamic(() => import("@/components/dashboard/add-song-dialog-content").then((m) => m.AddSongDialogContent));
+const DeleteSongDialogContent = dynamic(() => import("@/components/dashboard/delete-song-dialog-content").then((m) => m.DeleteSongDialogContent));
+const EditSongDialogContent = dynamic(() => import("@/components/dashboard/edit-song-dialog-content").then((m) => m.EditSongDialogContent));
 
 type UiSong = {
     id: string;

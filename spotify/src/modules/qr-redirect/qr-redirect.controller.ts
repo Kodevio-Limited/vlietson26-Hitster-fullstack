@@ -1,4 +1,12 @@
-import { Controller, Get, Param, Res, HttpStatus, Logger, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Res,
+  HttpStatus,
+  Logger,
+  BadRequestException,
+} from '@nestjs/common';
 
 import * as express from 'express';
 import { MappingsService } from '../mappings/mappings.service';
@@ -18,7 +26,10 @@ export class QrRedirectController {
   ) {}
 
   @Get('redirect/:identifier')
-  async redirect(@Param('identifier') identifier: string, @Res() res: express.Response) {
+  async redirect(
+    @Param('identifier') identifier: string,
+    @Res() res: express.Response,
+  ) {
     if (!IDENTIFIER_RE.test(identifier)) {
       // Reject malformed identifiers before any DB work. Do not log
       // the raw input (potential log injection / XSS in dashboards).
@@ -58,7 +69,8 @@ export class QrRedirectController {
 
       // Get the active mapping for this QR code (now that we know the QR
       // is active, this lookup is the only second DB hit per scan).
-      const mapping = await this.mappingsService.getActiveMappingByQrIdentifier(identifier);
+      const mapping =
+        await this.mappingsService.getActiveMappingByQrIdentifier(identifier);
 
       let songInfo: any = null;
       if (mapping && mapping.song) {
@@ -75,7 +87,9 @@ export class QrRedirectController {
           previewUrl: mapping.song.previewUrl,
         };
 
-        this.logger.log(`QR ${identifier} mapped to song: ${mapping.song.name} by ${mapping.song.artist}`);
+        this.logger.log(
+          `QR ${identifier} mapped to song: ${mapping.song.name} by ${mapping.song.artist}`,
+        );
       }
 
       // Return JSON response for mobile app
@@ -89,16 +103,16 @@ export class QrRedirectController {
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      const err = error as any;
+      const err = error;
       const status = err.status || HttpStatus.INTERNAL_SERVER_ERROR;
       // Never leak internal error messages; log full details server-side.
-      this.logger.error(
-        `Error processing QR code: ${err.message}`,
-        err.stack,
-      );
+      this.logger.error(`Error processing QR code: ${err.message}`, err.stack);
       return res.status(status).json({
         success: false,
-        error: status === HttpStatus.NOT_FOUND ? 'QR code not found' : 'An error occurred',
+        error:
+          status === HttpStatus.NOT_FOUND
+            ? 'QR code not found'
+            : 'An error occurred',
         code: status === HttpStatus.NOT_FOUND ? 'QR_NOT_FOUND' : 'SERVER_ERROR',
       });
     }
@@ -110,7 +124,8 @@ export class QrRedirectController {
       throw new BadRequestException('Invalid QR identifier');
     }
     const qrCode = await this.qrCodesService.findByIdentifier(identifier);
-    const mapping = await this.mappingsService.getActiveMappingByQrIdentifier(identifier);
+    const mapping =
+      await this.mappingsService.getActiveMappingByQrIdentifier(identifier);
 
     return {
       success: true,

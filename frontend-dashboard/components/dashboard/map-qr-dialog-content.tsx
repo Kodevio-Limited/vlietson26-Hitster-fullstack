@@ -1,6 +1,7 @@
 "use client";
 
 import { useAppForm } from "@/components/form/form-context";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -94,7 +95,9 @@ export function MapQrDialogContent({ songs, qrCodes, errorMessage, generatedQr, 
                     </div>
 
                     <div className="flex justify-center rounded-[10px] bg-white p-3">
-                        <img src={generatedQr.imageUrl} alt={`QR code for ${generatedQr.identifier}`} className="max-h-56 w-full max-w-56 object-contain" />
+                        <div className="relative h-56 w-full max-w-56">
+                            <Image src={generatedQr.imageUrl} alt={`QR code for ${generatedQr.identifier}`} fill className="object-contain" />
+                        </div>
                     </div>
 
                     <div className="flex items-center gap-3">

@@ -1,4 +1,11 @@
-import { IsString, IsOptional, IsUrl, MaxLength, MinLength, Matches } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsUrl,
+  MaxLength,
+  MinLength,
+  Matches,
+} from 'class-validator';
 
 /**
  * Body for PATCH /auth/update-profile. The previous inline-untyped body

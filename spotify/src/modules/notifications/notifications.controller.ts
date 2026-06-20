@@ -1,4 +1,11 @@
-import { Controller, Get, Post, Query, Request, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Query,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { NotificationsService } from './notifications.service';
 
@@ -10,7 +17,10 @@ export class NotificationsController {
   @Get()
   async list(@Request() req, @Query('limit') limit?: string) {
     const resolvedLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
-    const result = await this.notificationsService.listForUser(req.user.id, resolvedLimit);
+    const result = await this.notificationsService.listForUser(
+      req.user.id,
+      resolvedLimit,
+    );
 
     return {
       success: true,

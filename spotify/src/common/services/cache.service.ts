@@ -17,7 +17,7 @@ export class CacheService {
    */
   get<T>(key: string): T | undefined {
     const entry = this.cache.get(key);
-    
+
     if (!entry) {
       return undefined;
     }
@@ -92,7 +92,9 @@ export class CacheService {
     // Anchor the regex so 'songs:*' doesn't accidentally match
     // 'newsongs:foo'. Escape the rest of the pattern to avoid regex
     // injection from user-supplied keys.
-    const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+    const escaped = pattern
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '.*');
     const regex = new RegExp(`^${escaped}$`);
     let count = 0;
 
@@ -103,7 +105,9 @@ export class CacheService {
       }
     }
 
-    this.logger.debug(`Invalidated ${count} cache entries matching pattern: ${pattern}`);
+    this.logger.debug(
+      `Invalidated ${count} cache entries matching pattern: ${pattern}`,
+    );
   }
 
   /**

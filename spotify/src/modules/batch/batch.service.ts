@@ -27,7 +27,7 @@ export class BatchService {
     mappingLimit: number = 10,
   ): Promise<BatchDataResponse> {
     // Fetch all data in parallel
-    const [songsData, mappingsData, qrCodesData] = await Promise.all([
+    const [songsData, mappingsData] = await Promise.all([
       this.songsService.findAll({
         page: songPage,
         limit: songLimit,
@@ -35,7 +35,6 @@ export class BatchService {
         sortOrder: 'DESC',
       }),
       this.mappingsService.findAll(mappingPage, mappingLimit),
-      this.qrCodesService.findAll(),
     ]);
 
     return {
@@ -47,7 +46,7 @@ export class BatchService {
           data: mappingsData.items,
         },
         qrCodes: {
-          data: qrCodesData,
+          data: [],
         },
       },
     };

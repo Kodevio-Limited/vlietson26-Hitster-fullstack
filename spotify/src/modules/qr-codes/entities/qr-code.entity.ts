@@ -1,4 +1,11 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, OneToMany, Index } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  OneToMany,
+  Index,
+} from 'typeorm';
 import { Mapping } from '../../mappings/entities/mapping.entity';
 
 @Entity('qr_codes')

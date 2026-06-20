@@ -1,5 +1,12 @@
 import { plainToClass } from 'class-transformer';
-import { IsString, IsNumber, IsOptional, IsUrl, validateSync, MinLength } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsUrl,
+  validateSync,
+  MinLength,
+} from 'class-validator';
 
 class EnvironmentVariables {
   @IsString()
@@ -65,7 +72,8 @@ export function validate(config: Record<string, unknown>) {
   // Provide a dev-only fallback for JWT_SECRET so contributors can boot
   // without manually generating one. Never used in production.
   if (!isProd && !config.JWT_SECRET) {
-    config.JWT_SECRET = 'dev-only-jwt-secret-do-not-use-in-production-min-32-chars';
+    config.JWT_SECRET =
+      'dev-only-jwt-secret-do-not-use-in-production-min-32-chars';
   }
 
   return config;

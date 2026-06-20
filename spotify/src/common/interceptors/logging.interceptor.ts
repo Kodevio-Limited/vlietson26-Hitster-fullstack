@@ -1,4 +1,10 @@
-import { Injectable, NestInterceptor, ExecutionContext, CallHandler, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NestInterceptor,
+  ExecutionContext,
+  CallHandler,
+  Logger,
+} from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
@@ -15,9 +21,7 @@ export class LoggingInterceptor implements NestInterceptor {
     // Redact PII: log only the user id, not the email, to avoid leaving
     // user identifiers in stdout. Adjust the projection as needed for
     // debugging in dev (e.g. log email when NODE_ENV !== 'production').
-    const userRef = user
-      ? `[User:${user.id}]`
-      : '';
+    const userRef = user ? `[User:${user.id}]` : '';
 
     return next.handle().pipe(
       tap({

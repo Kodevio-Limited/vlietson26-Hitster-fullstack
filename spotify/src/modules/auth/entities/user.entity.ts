@@ -1,4 +1,11 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+} from 'typeorm';
 import { Mapping } from '../../mappings/entities/mapping.entity';
 import * as bcrypt from 'bcrypt';
 
@@ -10,16 +17,33 @@ export class User {
   @Column({ type: 'varchar', length: 255, unique: true })
   email: string;
 
-  @Column({ type: 'varchar', length: 255, unique: true, nullable: true, name: 'spotify_id' })
+  @Column({
+    type: 'varchar',
+    length: 255,
+    unique: true,
+    nullable: true,
+    name: 'spotify_id',
+  })
   spotifyId: string;
 
-  @Column({ type: 'varchar', length: 255, unique: true, nullable: true, name: 'clerk_id' })
+  @Column({
+    type: 'varchar',
+    length: 255,
+    unique: true,
+    nullable: true,
+    name: 'clerk_id',
+  })
   clerkId: string;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   password?: string;
 
-  @Column({ type: 'varchar', length: 10, nullable: true, name: 'verification_code' })
+  @Column({
+    type: 'varchar',
+    length: 10,
+    nullable: true,
+    name: 'verification_code',
+  })
   verificationCode?: string | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true, name: 'reset_token' })
@@ -28,7 +52,12 @@ export class User {
   @Column({ type: 'timestamp', nullable: true, name: 'reset_token_expires_at' })
   resetTokenExpiresAt?: Date | null;
 
-  @Column({ type: 'varchar', length: 255, nullable: true, name: 'display_name' })
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    name: 'display_name',
+  })
   displayName: string;
 
   @Column({ type: 'text', nullable: true, name: 'image_url' })
@@ -43,7 +72,11 @@ export class User {
   @Column({ type: 'text', nullable: true, name: 'spotify_refresh_token' })
   spotifyRefreshToken: string;
 
-  @Column({ type: 'timestamp', nullable: true, name: 'spotify_token_expires_at' })
+  @Column({
+    type: 'timestamp',
+    nullable: true,
+    name: 'spotify_token_expires_at',
+  })
   spotifyTokenExpiresAt: Date;
 
   @Column({ type: 'boolean', default: false, name: 'has_premium' })

@@ -35,7 +35,10 @@ export class NotificationsService {
     return this.notificationRepository.save(item);
   }
 
-  async listForUser(userId: string, limit = 20): Promise<{ items: Notification[]; unreadCount: number }> {
+  async listForUser(
+    userId: string,
+    limit = 20,
+  ): Promise<{ items: Notification[]; unreadCount: number }> {
     const [items, unreadCount] = await Promise.all([
       this.notificationRepository.find({
         where: [{ userId }, { userId: IsNull() }],
@@ -58,7 +61,9 @@ export class NotificationsService {
       .createQueryBuilder()
       .update(Notification)
       .set({ isRead: true })
-      .where('(user_id = :userId OR user_id IS NULL) AND is_read = false', { userId })
+      .where('(user_id = :userId OR user_id IS NULL) AND is_read = false', {
+        userId,
+      })
       .execute();
   }
 }

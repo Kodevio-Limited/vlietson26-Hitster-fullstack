@@ -8,7 +8,10 @@ export class SpotifyController {
   constructor(private readonly spotifyService: SpotifyService) {}
 
   @Get('search')
-  async searchTracks(@Query('q') query: string, @Query('limit') limit: number = 10) {
+  async searchTracks(
+    @Query('q') query: string,
+    @Query('limit') limit: number = 10,
+  ) {
     const results = await this.spotifyService.searchTracks(query, limit);
     return {
       success: true,

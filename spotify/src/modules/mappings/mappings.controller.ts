@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Param, Delete, UseGuards, Request, Patch } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Delete,
+  UseGuards,
+  Request,
+  Patch,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../../common/guards/admin.guard';
 import { MappingsService } from './mappings.service';
@@ -11,7 +21,10 @@ export class MappingsController {
 
   @Post()
   async create(@Body() createMappingDto: CreateMappingDto, @Request() req) {
-    const mapping = await this.mappingsService.create(createMappingDto, req.user.id);
+    const mapping = await this.mappingsService.create(
+      createMappingDto,
+      req.user.id,
+    );
     return {
       success: true,
       message: 'Mapping created successfully',

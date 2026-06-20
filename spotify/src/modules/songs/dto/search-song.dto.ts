@@ -1,4 +1,12 @@
-import { IsString, IsOptional, IsInt, Min, IsIn, IsEnum, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsInt,
+  Min,
+  IsIn,
+  IsEnum,
+  MaxLength,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 // Allow-list of columns that may be used in ORDER BY. Anything else
