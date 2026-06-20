@@ -42,8 +42,13 @@ export class BatchService {
       success: true,
       data: {
         songs: songsData,
-        mappings: mappingsData,
-        qrCodes: qrCodesData,
+        mappings: {
+          total: mappingsData.total,
+          data: mappingsData.items,
+        },
+        qrCodes: {
+          data: qrCodesData,
+        },
       },
     };
   }
@@ -68,9 +73,14 @@ export class BatchService {
     return {
       success: true,
       data: {
-        mappings: mappingsData,
+        mappings: {
+          total: mappingsData.total,
+          data: mappingsData.items,
+        },
         songs: songsData,
-        qrCodes: qrCodesData,
+        qrCodes: {
+          data: qrCodesData,
+        },
       },
     };
   }
