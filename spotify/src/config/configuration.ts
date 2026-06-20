@@ -20,7 +20,7 @@ export default () => ({
   },
 
   qrCode: {
-    size: parseInt(process.env.QR_CODE_SIZE || '300', 10),
+    size: parseInt(process.env.QR_CODE_SIZE || '3000', 10),
     margin: parseInt(process.env.QR_CODE_MARGIN || '2', 10),
   },
 

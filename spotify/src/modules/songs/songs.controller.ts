@@ -55,9 +55,10 @@ export class SongsController {
     if (!mapping || !mapping.qrCode) {
       return { success: false, message: 'No active QR code found for this song' };
     }
+    const qrCode = await this.songsService.getSongQrCode(id);
     return {
       success: true,
-      data: mapping.qrCode,
+      data: qrCode,
     };
   }
 

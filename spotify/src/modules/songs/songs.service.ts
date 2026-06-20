@@ -91,7 +91,7 @@ export class SongsService {
     });
 
     if (song) {
-       return song;
+       throw new ConflictException(`This song is already imported (ID: ${song.spotifyTrackId})`);
     }
 
     // Fetch track info from Spotify
@@ -180,6 +180,15 @@ export class SongsService {
     }, userId);
 
     return newQrCode;
+  }
+
+  async getSongQrCode(songId: string): Promise<any> {
+    const song = await this.findOne(songId);
+    const mapping = song.mappings?.find(m => m.isActive);
+    if (!mapping || !mapping.qrCode) {
+      throw new NotFoundException('No active QR code found for this song');
+    }
+    return await this.qrCodesService.findOne(mapping.qrCode.id);
   }
 
   async findAll(searchDto: SearchSongDto): Promise<{ items: Song[]; total: number; page: number; limit: number; totalPages: number }> {
