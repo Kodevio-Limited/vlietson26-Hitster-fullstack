@@ -48,9 +48,19 @@ export class QrCodesService {
     };
 
     const qrCodeDataUrl = await QRCode.toDataURL(spotifyUrl, qrOptions);
-    
-    // Create redirect URL that goes through your API for tracking
-    const redirectUrl = `${this.configService.get('apiUrl')}/api/qr/redirect/${createDto.identifier}`;
+
+    // Build the redirect URL. In production, refuse to generate a QR
+    // code if API_URL is missing or still the localhost default — the
+    // URL is baked into the printed card, so an incorrect value here
+    // is permanent.
+    const apiUrl = this.configService.get<string>('apiUrl');
+    const isProd = this.configService.get<string>('nodeEnv') === 'production';
+    if (isProd && (!apiUrl || apiUrl.startsWith('http://localhost'))) {
+      throw new ConflictException(
+        'API_URL must be set to a non-localhost URL in production before generating QR codes',
+      );
+    }
+    const redirectUrl = `${apiUrl}/api/qr/redirect/${createDto.identifier}`;
 
     const qrCode = this.qrCodeRepository.create({
       identifier: createDto.identifier,
@@ -109,7 +119,7 @@ export class QrCodesService {
         isActive: true,
         scans: true,
         createdAt: true,
-      }
+      },
     });
 
     if (!qrCode) {
@@ -117,6 +127,23 @@ export class QrCodesService {
     }
 
     return qrCode;
+  }
+
+  /**
+   * Hot path used by QR scans: only the columns the redirect endpoint
+   * actually needs. Skips the heavy `imageUrl` base64 column and the
+   * nested relations, so each scan stays sub-millisecond at the DB.
+   */
+  async findMetaByIdentifier(identifier: string): Promise<{
+    id: string;
+    isActive: boolean;
+    code: string;
+    identifier: string;
+  } | null> {
+    return this.qrCodeRepository.findOne({
+      where: { identifier },
+      select: { id: true, identifier: true, code: true, isActive: true },
+    });
   }
 
   async incrementScans(identifier: string): Promise<void> {

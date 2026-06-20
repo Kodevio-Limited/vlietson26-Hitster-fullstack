@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import { randomInt, randomBytes } from 'node:crypto';
 import { User } from './entities/user.entity';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
@@ -254,17 +255,20 @@ export class AuthService {
       return { message: 'If an account with that email exists, we have sent a verification code.' };
     }
 
-    // Generate 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate 6-digit OTP using a CSPRNG. Math.random() is predictable
+    // and not safe for security tokens.
+    const otp = randomInt(100000, 1000000).toString();
     user.verificationCode = otp;
     await this.userRepository.save(user);
 
     // Send real email
     await this.mailService.sendVerificationCode(email, otp);
 
-    return { 
+    return {
       message: 'Verification code sent to your email.',
-      otp: process.env.NODE_ENV === 'development' ? otp : undefined 
+      // Do not include OTP in response at all; dev convenience should go
+      // through a dedicated debug endpoint to avoid email enumeration
+      // via response-shape differences (Object.keys length differs).
     };
   }
 
@@ -277,8 +281,8 @@ export class AuthService {
       throw new UnauthorizedException('Invalid verification code');
     }
 
-    // Generate a temporary reset token
-    const resetToken = Math.random().toString(36).substring(2, 15);
+    // 32-byte cryptographically random token, hex-encoded.
+    const resetToken = randomBytes(32).toString('hex');
     user.resetToken = resetToken;
     user.resetTokenExpiresAt = new Date(Date.now() + 3600000); // 1 hour
     user.verificationCode = null; // Clear OTP
@@ -308,18 +312,9 @@ export class AuthService {
     return { message: 'Password has been reset successfully.' };
   }
 
-  async updateProfile(userId: string, updateDto: { name: string; email: string; imageUrl?: string }): Promise<Partial<User>> {
-    console.log(`[AuthService] Updating profile for user ${userId}`, updateDto);
+  async updateProfile(userId: string, updateDto: { name: string; imageUrl?: string }): Promise<Partial<User>> {
+    this.logger.log(`Updating profile for user ${userId}`);
     const user = await this.getCurrentUser(userId);
-    const previousEmail = user.email;
-
-    if (updateDto.email !== user.email) {
-      const existingUser = await this.userRepository.findOne({ where: { email: updateDto.email } });
-      if (existingUser && existingUser.id !== userId) {
-        throw new ConflictException('Email already in use');
-      }
-      user.email = updateDto.email;
-    }
 
     user.displayName = updateDto.name;
     if (updateDto.imageUrl) {
@@ -327,22 +322,7 @@ export class AuthService {
     }
     await this.userRepository.save(user);
 
-    if (previousEmail !== user.email) {
-      try {
-        await this.notificationsService.create({
-          userId,
-          type: 'email_changed',
-          category: 'security',
-          severity: 'warning',
-          title: 'Email changed',
-          message: `Your login email was changed from ${previousEmail} to ${user.email}.`,
-        });
-      } catch (error) {
-        this.logger.warn(`Failed to create email change notification: ${error.message}`);
-      }
-    }
-
-    const { password, spotifyAccessToken, spotifyRefreshToken, ...safeUser } = user;
+    const { password, spotifyAccessToken, spotifyRefreshToken, verificationCode, resetToken, ...safeUser } = user;
     return safeUser;
   }
 

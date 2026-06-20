@@ -89,16 +89,20 @@ export class CacheService {
    * @param pattern Pattern to match (supports wildcards)
    */
   invalidatePattern(pattern: string): void {
-    const regex = new RegExp(pattern.replace(/\*/g, '.*'));
+    // Anchor the regex so 'songs:*' doesn't accidentally match
+    // 'newsongs:foo'. Escape the rest of the pattern to avoid regex
+    // injection from user-supplied keys.
+    const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+    const regex = new RegExp(`^${escaped}$`);
     let count = 0;
-    
+
     for (const key of this.cache.keys()) {
       if (regex.test(key)) {
         this.cache.delete(key);
         count++;
       }
     }
-    
+
     this.logger.debug(`Invalidated ${count} cache entries matching pattern: ${pattern}`);
   }
 

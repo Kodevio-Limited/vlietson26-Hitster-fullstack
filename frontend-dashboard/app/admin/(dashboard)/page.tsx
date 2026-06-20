@@ -1,6 +1,6 @@
 "use client";
 
-import { fetchAvailableQrCardsCount, fetchMappings, fetchRecentSongs, fetchSongs } from "@/lib/api/admin-dashboard";
+import { fetchDashboardData, fetchAvailableQrCardsCount } from "@/lib/api/admin-dashboard";
 import { CircleHelp, Library, Loader2, Music2, QrCode } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -68,33 +68,43 @@ export default function Dashboard() {
         const loadDashboardData = async () => {
             setIsLoading(true);
             try {
-                const [songsPage, cardsCount, mappings, recentSongsResponse] = await Promise.all([
-                    fetchSongs({ page: 1, limit: 1 }),
+                // Single batch call replaces four parallel endpoint calls.
+                // The backend's BatchService fans out the queries itself
+                // and returns the joined payload.
+                const [batch, cardsCount] = await Promise.all([
+                    fetchDashboardData({ songLimit: 1 }),
                     fetchAvailableQrCardsCount(),
-                    fetchMappings(),
-                    fetchRecentSongs(4),
                 ]);
 
                 if (!isMounted) {
                     return;
                 }
 
-                const activeMappingSongIds = new Set(mappings.data.filter((mapping) => mapping.isActive).map((mapping) => mapping.songId));
-                const unmappedSongs = Math.max(songsPage.total - activeMappingSongIds.size, 0);
+                const totalSongs = batch.data.songs.total;
+                const mappings = batch.data.mappings.data;
+                const recentSongsResponse = batch.data.songs.items;
+
+                const activeMappingSongIds = new Set(
+                    mappings.filter((m) => m.isActive).map((m) => m.songId),
+                );
+                const unmappedSongs = Math.max(totalSongs - activeMappingSongIds.size, 0);
 
                 setStats({
-                    totalSongs: songsPage.total,
+                    totalSongs,
                     activeCards: cardsCount,
                     unmappedSongs,
-                    collections: mappings.total,
+                    collections: batch.data.mappings.total,
                 });
 
                 setRecentSongs(
                     recentSongsResponse.map((song) => ({
                         title: song.name,
                         artist: song.artist,
-                        year: song.releaseYear !== undefined && song.releaseYear !== null ? String(song.releaseYear) : "-",
-                    }))
+                        year:
+                            song.releaseYear !== undefined && song.releaseYear !== null
+                                ? String(song.releaseYear)
+                                : "-",
+                    })),
                 );
             } catch {
                 if (!isMounted) {

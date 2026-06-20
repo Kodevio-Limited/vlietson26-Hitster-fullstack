@@ -33,19 +33,19 @@ export class Mapping {
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @ManyToOne(() => Song, (song) => song.mappings)
+  @ManyToOne(() => Song, (song) => song.mappings, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'song_id' })
   song: Song;
 
-  @ManyToOne(() => QrCode, (qrCode) => qrCode.mappings)
+  @ManyToOne(() => QrCode, (qrCode) => qrCode.mappings, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'qr_code_id' })
   qrCode: QrCode;
 
-  @ManyToOne(() => QrCard)
+  @ManyToOne(() => QrCard, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'qr_card_id' })
   qrCard: QrCard;
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'created_by' })
   createdBy: User;
 }

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
 
 export default function Verification() {
@@ -65,9 +66,10 @@ export default function Verification() {
         setError(null);
         try {
             await apiClient.post("/auth/forgot-password", { email });
-            alert("Verification code resent!");
-        } catch (err: any) {
+            toast.success("Verification code resent!");
+        } catch (err: unknown) {
             setError("Failed to resend code");
+            toast.error("Failed to resend code");
         }
     };
 

@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import configuration from './config/configuration';
+import { validate } from './config/validation';
 import { SongsModule } from './modules/songs/songs.module';
 import { QrCodesModule } from './modules/qr-codes/qr-codes.module';
 import { QrCardsModule } from './modules/qr-cards/qr-cards.module';
@@ -19,29 +20,35 @@ import { QrCard } from './modules/qr-cards/entities/qr-card.entity';
 import { Mapping } from './modules/mappings/entities/mapping.entity';
 import { User } from './modules/auth/entities/user.entity';
 import { Notification } from './modules/notifications/entities/notification.entity';
+import { TypeOrmModule } from '@nestjs/typeorm';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
+      validate,
+      validationOptions: { allowUnknown: true, abortEarly: false },
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        url: configService.get<string>('database.url'),
-        entities: [Song, QrCode, QrCard, Mapping, User, Notification],
-        synchronize: true,
-        logging: true,
-        extra: {
-          max: 20,
-          idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 10000,
-        },
-        retryAttempts: 5,
-        retryDelay: 5000,
-      }),
+      useFactory: (configService: ConfigService) => {
+        const isProd = configService.get<string>('nodeEnv') === 'production';
+        return {
+          type: 'postgres',
+          url: configService.get<string>('database.url'),
+          entities: [Song, QrCode, QrCard, Mapping, User, Notification],
+          synchronize: !isProd,
+          logging: !isProd,
+          extra: {
+            max: 20,
+            idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 10000,
+          },
+          retryAttempts: 5,
+          retryDelay: 5000,
+        };
+      },
       inject: [ConfigService],
     }),
     ThrottlerModule.forRootAsync({
@@ -67,5 +74,13 @@ import { Notification } from './modules/notifications/entities/notification.enti
     NotificationsModule,
   ],
   controllers: [QrRedirectController],
+  providers: [
+    // Apply ThrottlerGuard globally with a generous default; auth routes
+    // override with @Throttle() to be much stricter.
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}

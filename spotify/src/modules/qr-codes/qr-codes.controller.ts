@@ -1,12 +1,11 @@
 import { Controller, Get, Post, Body, Param, Delete, UseGuards, Patch } from '@nestjs/common';
-
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { AdminGuard } from '../../common/guards/admin.guard';
 import { QrCodesService } from './qr-codes.service';
 import { CreateQrCodeDto } from './dto/create-qr-code.dto';
-import { AdminGuard } from '../../common/guards/admin.guard';
 
 @Controller('qr-codes')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, AdminGuard)
 export class QrCodesController {
   constructor(private readonly qrCodesService: QrCodesService) {}
 

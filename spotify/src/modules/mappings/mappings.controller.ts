@@ -1,11 +1,11 @@
 import { Controller, Get, Post, Body, Param, Delete, UseGuards, Request, Patch } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { AdminGuard } from '../../common/guards/admin.guard';
 import { MappingsService } from './mappings.service';
 import { CreateMappingDto } from './dto/create-mapping.dto';
-import { AdminGuard } from '../../common/guards/admin.guard';
 
 @Controller('mappings')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, AdminGuard)
 export class MappingsController {
   constructor(private readonly mappingsService: MappingsService) {}
 
@@ -22,7 +22,7 @@ export class MappingsController {
   @Get()
   async findAll(@Request() req) {
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
+    const limit = Math.min(parseInt(req.query.limit as string) || 10, 100);
     const result = await this.mappingsService.findAll(page, limit);
     return {
       success: true,

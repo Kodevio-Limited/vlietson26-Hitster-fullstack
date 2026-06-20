@@ -1,5 +1,5 @@
 import { plainToClass } from 'class-transformer';
-import { IsString, IsNumber, IsOptional, validateSync } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsUrl, validateSync, MinLength } from 'class-validator';
 
 class EnvironmentVariables {
   @IsString()
@@ -8,20 +8,14 @@ class EnvironmentVariables {
   @IsNumber()
   PORT: number;
 
+  @IsOptional()
   @IsString()
-  DB_HOST: string;
+  DATABASE_URL?: string;
 
-  @IsNumber()
-  DB_PORT: number;
-
+  @IsOptional()
   @IsString()
-  DB_USERNAME: string;
-
-  @IsString()
-  DB_PASSWORD: string;
-
-  @IsString()
-  DB_DATABASE: string;
+  @IsUrl({ require_tld: false })
+  FRONTEND_URL?: string;
 
   @IsString()
   SPOTIFY_CLIENT_ID: string;
@@ -30,28 +24,49 @@ class EnvironmentVariables {
   SPOTIFY_CLIENT_SECRET: string;
 
   @IsString()
+  @IsUrl({ require_tld: false })
   SPOTIFY_REDIRECT_URI: string;
 
   @IsString()
+  @MinLength(32, { message: 'JWT_SECRET must be at least 32 characters' })
   JWT_SECRET: string;
 
-  @IsString()
   @IsOptional()
-  JWT_EXPIRES_IN: string;
+  @IsString()
+  JWT_EXPIRES_IN?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsUrl({ require_tld: false })
+  API_URL?: string;
 }
 
 export function validate(config: Record<string, unknown>) {
+  // JWT_SECRET is required only in production; in dev we tolerate a default
+  // so first-time local setup doesn't fail.
+  const isProd = config.NODE_ENV === 'production';
+
+  if (isProd && !config.JWT_SECRET) {
+    throw new Error('JWT_SECRET is required in production');
+  }
+
   const validatedConfig = plainToClass(EnvironmentVariables, config, {
     enableImplicitConversion: true,
   });
-  
+
   const errors = validateSync(validatedConfig, {
-    skipMissingProperties: false,
+    skipMissingProperties: !isProd,
   });
 
   if (errors.length > 0) {
     throw new Error(errors.toString());
   }
-  
-  return validatedConfig;
+
+  // Provide a dev-only fallback for JWT_SECRET so contributors can boot
+  // without manually generating one. Never used in production.
+  if (!isProd && !config.JWT_SECRET) {
+    config.JWT_SECRET = 'dev-only-jwt-secret-do-not-use-in-production-min-32-chars';
+  }
+
+  return config;
 }

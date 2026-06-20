@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { AxiosError } from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,7 +17,7 @@ export default function Signin() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
-    
+
     // Form states
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -28,18 +29,26 @@ export default function Signin() {
         try {
             const response = await apiClient.post("/auth/login", { email, password });
             const { jwtToken, user } = response.data;
-            
+
             // Set localStorage first while we're on the client
             localStorage.setItem("adminToken", jwtToken);
             localStorage.setItem("user", JSON.stringify(user));
-            
+
             // Set cookie via Server Action
             await setAdminSessionCookie(jwtToken);
-            
+
             // Redirect via Server Action to ensure middleware sees the cookie
             await loginRedirect();
-        } catch (err: any) {
-            setError(err.response?.data?.message || "Invalid email or password");
+        } catch (err: unknown) {
+            // Preserve the Axios error context: read the server's actual
+            // message rather than always falling back to a generic string.
+            const axiosErr = err as AxiosError<{ message?: string }>;
+            const serverMessage = axiosErr.response?.data?.message;
+            const fallback =
+                axiosErr.code === "ERR_NETWORK"
+                    ? "Network error — is the backend reachable?"
+                    : "Invalid email or password";
+            setError(serverMessage ?? fallback);
         } finally {
             setIsLoading(false);
         }

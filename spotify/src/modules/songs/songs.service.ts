@@ -63,8 +63,9 @@ export class SongsService {
 
   async findAll(searchDto: SearchSongDto): Promise<{ items: Song[]; total: number; page: number; limit: number; totalPages: number }> {
     const { q, page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'DESC' } = searchDto;
+    const safeLimit = Math.min(limit, 100);
     const where: FindOptionsWhere<Song> = {};
-    
+
     if (q) {
       where.name = Like(`%${q}%`);
     }
@@ -72,16 +73,16 @@ export class SongsService {
     const [items, total] = await this.songRepository.findAndCount({
       where,
       order: { [sortBy]: sortOrder },
-      skip: (page - 1) * limit,
-      take: limit,
+      skip: (page - 1) * safeLimit,
+      take: safeLimit,
     });
 
     return {
       items,
       total,
       page,
-      limit,
-      totalPages: Math.ceil(total / limit),
+      limit: safeLimit,
+      totalPages: Math.ceil(total / safeLimit),
     };
   }
 

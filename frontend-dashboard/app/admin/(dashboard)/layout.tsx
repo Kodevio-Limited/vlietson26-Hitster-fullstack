@@ -48,17 +48,22 @@ function SidebarNav() {
                 type="button"
                 onClick={async () => {
                     try {
-                        // 1. Clear LocalStorage first (Client-side)
-                        logout();
-
-                        // 2. Clear Cookie via Server Action
+                        // 1. Clear cookie via Server Action FIRST. If this
+                        // throws, do NOT clear localStorage or navigate —
+                        // the user would be silently "logged out" while
+                        // the server still considers them authenticated.
                         await clearAdminSessionCookie();
+
+                        // 2. Clear localStorage (client-side copy) only
+                        // after the server confirms cookie cleared.
+                        logout();
                     } catch (error) {
                         console.error("Logout error:", error);
-                    } finally {
-                        // 3. Client-side redirect is safer for logout to avoid action-triggered unhandled rejections
-                        router.push("/admin/signin");
+                        // Surface a real error instead of silently failing.
+                        alert("Could not log you out. Please try again.");
+                        return;
                     }
+                    router.push("/admin/signin");
                 }}
                 className="mt-2 flex h-14 w-full max-w-56.25 items-center gap-2 rounded-[20px] px-4 text-left text-[20px] font-medium leading-7 text-[#b91c1c] transition-colors hover:bg-[#fef2f2]"
             >
@@ -76,8 +81,14 @@ export default function DashboardLayout({ children }: Readonly<{ children: React
 
     useEffect(() => {
         const syncUser = () => {
-            const storedUser = localStorage.getItem("user");
-            setUser(storedUser ? JSON.parse(storedUser) : null);
+            try {
+                const storedUser = localStorage.getItem("user");
+                // Guard against corrupted JSON; an unhandled throw here
+                // would crash the dashboard on every navigation.
+                setUser(storedUser ? JSON.parse(storedUser) : null);
+            } catch {
+                setUser(null);
+            }
         };
 
         syncUser();

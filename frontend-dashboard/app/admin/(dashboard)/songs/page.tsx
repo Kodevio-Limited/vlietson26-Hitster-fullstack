@@ -96,11 +96,16 @@ export default function SongsPage() {
     const endItem = Math.min(page * limit, total);
 
     const handleAddSong = async (payload: { name: string; artist: string; releaseYear: number; spotifyTrackId: string }) => {
-        await createSong(payload);
-        setIsAddDialogOpen(false);
-        setPage(1);
-        await loadSongs(1, query);
-        toast.success("Song successfully added!");
+        try {
+            await createSong(payload);
+            setIsAddDialogOpen(false);
+            setPage(1);
+            await loadSongs(1, query);
+            toast.success("Song successfully added!");
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to add song";
+            toast.error(message);
+        }
     };
 
     const handleEditSong = async (song: UiSong) => {

@@ -5,7 +5,7 @@ import { DeleteMappingDialogContent } from "@/components/dashboard/delete-mappin
 import { QrMappingCard } from "@/components/dashboard/qr-mapping-card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { createMapping, createQrCode, deleteMapping, fetchMappings, fetchQrCodeById, fetchQrCodes, fetchSongs, updateMapping } from "@/lib/api/admin-dashboard";
+import { createMapping, createQrCode, deleteMapping, fetchMappings, fetchQrCodeById, fetchQrCodes, fetchQrMappingPageData, fetchSongs, updateMapping } from "@/lib/api/admin-dashboard";
 import { Download, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useEffect, useMemo, useState } from "react";
@@ -85,15 +85,20 @@ export default function QrMappingPage() {
         const loadPageData = async () => {
             setIsLoading(true);
             try {
-                const [mappingsResponse, songsResponse, qrCodesResponse] = await Promise.all([
-                    fetchMappings({ page: currentPage, limit: itemsPerPage }),
-                    fetchSongs({ page: 1, limit: 100 }),
-                    fetchQrCodes(),
-                ]);
+                // Single batch call: backend fans out mappings + songs +
+                // qrCodes in parallel and returns the joined payload.
+                const batch = await fetchQrMappingPageData({
+                    mappingPage: currentPage,
+                    mappingLimit: itemsPerPage,
+                });
 
                 if (!isMounted) {
                     return;
                 }
+
+                const mappingsResponse = batch.data.mappings;
+                const songsResponse = batch.data.songs;
+                const qrCodesResponse = batch.data.qrCodes;
 
                 setMappings(
                     mappingsResponse.data.map((mapping) => ({
@@ -129,7 +134,10 @@ export default function QrMappingPage() {
         return () => {
             isMounted = false;
         };
-    }, []);
+        // Re-run on page change so deep links load the right page on
+        // first render instead of always fetching page 1.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentPage]);
 
     const totalPages = Math.ceil(totalItems / itemsPerPage);
     const pageButtons = useMemo(() => {

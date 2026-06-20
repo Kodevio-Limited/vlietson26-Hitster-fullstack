@@ -9,28 +9,42 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
-    
+
     const status = exception instanceof HttpException
       ? exception.getStatus()
       : HttpStatus.INTERNAL_SERVER_ERROR;
-    
-    const message = exception instanceof HttpException
-      ? exception.getResponse()
-      : 'Internal server error';
-    
+
+    let clientMessage: string;
+    if (exception instanceof HttpException) {
+      const resp = exception.getResponse();
+      clientMessage =
+        typeof resp === 'string'
+          ? resp
+          : (resp as any).message || exception.message;
+      // Normalize arrays of class-validator messages into a single string.
+      if (Array.isArray(clientMessage)) {
+        clientMessage = clientMessage.join('; ');
+      }
+    } else {
+      // Never leak internal error details to clients. Log them instead.
+      clientMessage = 'Internal server error';
+    }
+
     const errorResponse = {
       statusCode: status,
       timestamp: new Date().toISOString(),
       path: request.url,
       method: request.method,
-      message: typeof message === 'string' ? message : (message as any).message || 'An error occurred',
+      message: clientMessage,
     };
-    
+
+    // Log the full server-side error including stack for ops, but never
+    // include it in the response body.
     this.logger.error(
-      `${request.method} ${request.url} - Status: ${status} - Error: ${JSON.stringify(errorResponse)}`,
+      `${request.method} ${request.url} - Status: ${status} - ${JSON.stringify(errorResponse)}`,
       exception instanceof Error ? exception.stack : '',
     );
-    
+
     response.status(status).json(errorResponse);
   }
 }
