@@ -3,8 +3,9 @@
 import { batchQueries } from "@/lib/queries/batch";
 import { qrCardQueries } from "@/lib/queries/qr-cards";
 import { CircleHelp, Library, Music2, QrCode } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 
 type StatCardData = {
@@ -88,6 +89,22 @@ export default function Dashboard() {
     const availableCardsQuery = useQuery(qrCardQueries.available());
 
     const isLoading = dashboardQuery.isPending || availableCardsQuery.isPending;
+    const isError = dashboardQuery.isError || availableCardsQuery.isError;
+
+    // Surface backend failures to the admin. Without this, a 500 on
+    // /api/batch/dashboard renders zeros and "No songs yet." with no
+    // signal that the request failed — the admin believes data was
+    // wiped. Toasting on each render of the error state is intentional;
+    // `toast.error` dedupes consecutive calls with the same message via
+    // the default id, so this doesn't spam.
+    useEffect(() => {
+        if (!isError) return;
+        const message =
+            dashboardQuery.error?.message ??
+            availableCardsQuery.error?.message ??
+            "Failed to load dashboard data";
+        toast.error(message);
+    }, [isError, dashboardQuery.error, availableCardsQuery.error]);
 
     // Derive the stat cards and the recent-songs list from the batch
     // payload. If the batch is still loading we get `null` and render
@@ -132,6 +149,36 @@ export default function Dashboard() {
         ],
         [stats]
     );
+
+    if (isError) {
+        return (
+            <section className="mx-auto w-full pb-10">
+                <div
+                    role="alert"
+                    className="rounded-[10px] border border-red-200 bg-red-50 p-6 text-red-900"
+                >
+                    <h2 className="text-[20px] font-semibold leading-tight">
+                        Couldn&apos;t load the dashboard
+                    </h2>
+                    <p className="mt-2 text-sm">
+                        Something went wrong fetching the latest stats. Check
+                        the toast above for the server message, or try again in
+                        a moment.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            dashboardQuery.refetch();
+                            availableCardsQuery.refetch();
+                        }}
+                        className="mt-4 inline-flex h-9 items-center rounded-[5px] border border-red-300 bg-white px-3 text-sm font-medium text-red-900 hover:bg-red-100"
+                    >
+                        Retry
+                    </button>
+                </div>
+            </section>
+        );
+    }
 
     return (
         <section className="mx-auto w-full pb-10">

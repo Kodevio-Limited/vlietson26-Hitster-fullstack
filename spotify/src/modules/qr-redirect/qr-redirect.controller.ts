@@ -41,10 +41,13 @@ export class QrRedirectController {
     }
 
     try {
-      this.logger.log(`QR Code scanned`);
-
-      // Use the slim meta lookup; the heavy findByIdentifier joins
-      // mappings/song/qrCard which we do not need here.
+      // Slim meta lookup; returns just the columns the redirect path
+      // needs (id, identifier, code, isActive). The previous version
+      // did this lookup, then called `getActiveMappingByQrIdentifier`
+      // which re-fetched the same row via the heavy `findByIdentifier`
+      // (eager-loading mappings + mappings.song + mappings.qrCard)
+      // just to recover `qrCode.id`. That second heavy query is gone —
+      // we pass `qrCode.id` straight to the slim mapping lookup below.
       const qrCode = await this.qrCodesService.findMetaByIdentifier(identifier);
 
       if (!qrCode) {
@@ -63,14 +66,27 @@ export class QrRedirectController {
         });
       }
 
-      // Increment scan count only after we know the QR is valid and active.
-      // The atomic increment returns the new value but we don't surface it.
-      await this.qrCodesService.incrementScans(identifier);
+      // Increment scan count atomically with the isActive check. Closes
+      // the TOCTOU window where a deactivation between this method and
+      // the increment would still bump the counter; if the QR was
+      // deactivated in the gap, the UPDATE affects 0 rows and we report
+      // 410 GONE.
+      const affected = await this.qrCodesService.incrementScansIfActive(
+        identifier,
+      );
+      if (affected === 0) {
+        return res.status(HttpStatus.GONE).json({
+          success: false,
+          error: 'This QR code has been deactivated',
+          code: 'QR_INACTIVE',
+        });
+      }
 
-      // Get the active mapping for this QR code (now that we know the QR
-      // is active, this lookup is the only second DB hit per scan).
+      // Slim active-mapping lookup keyed on qrCode.id. Skips the heavy
+      // `findByIdentifier` re-fetch and uses a slim `select` so only the
+      // 7 song columns the response projects come back from disk.
       const mapping =
-        await this.mappingsService.getActiveMappingByQrIdentifier(identifier);
+        await this.mappingsService.getActiveMappingByQrCodeId(qrCode.id);
 
       let songInfo: any = null;
       if (mapping && mapping.song) {
@@ -86,20 +102,18 @@ export class QrRedirectController {
           albumImageUrl: mapping.song.albumImageUrl,
           previewUrl: mapping.song.previewUrl,
         };
-
-        this.logger.log(
-          `QR ${identifier} mapped to song: ${mapping.song.name} by ${mapping.song.artist}`,
-        );
       }
 
-      // Return JSON response for mobile app
-      // The mobile app will use this to open Spotify
+      // Return JSON response for the mobile client. The previous response
+      // carried a `redirectUrl` field set to the Spotify URL — duplicate
+      // of `spotifyUrl` and unrelated to the QR's stored `redirectUrl`
+      // (the public scan URL the mobile client already used to reach
+      // here). Removed to avoid the misleading duplicate.
       return res.json({
         success: true,
         spotifyUrl: qrCode.code,
         spotifyTrackId: songInfo?.spotifyTrackId,
         song: songInfo,
-        redirectUrl: qrCode.code,
         timestamp: new Date().toISOString(),
       });
     } catch (error) {

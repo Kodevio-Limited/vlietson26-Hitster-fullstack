@@ -14,7 +14,7 @@ import { queryKeys, type BatchDashboardParams, type BatchQrMappingParams } from 
 export const batchQueries = {
     dashboard: (params: BatchDashboardParams = {}) =>
         queryOptions({
-            queryKey: queryKeys.batch.dashboard(params),
+            queryKey: queryKeys.batch.dashboard.query(params),
             queryFn: () => fetchDashboardData(params),
             // Dashboard is the landing page — keep it fresh for 30s so
             // bouncing back from /songs doesn't refetch everything.
@@ -23,7 +23,7 @@ export const batchQueries = {
 
     qrMapping: (params: BatchQrMappingParams = {}) =>
         queryOptions({
-            queryKey: queryKeys.batch.qrMapping(params),
+            queryKey: queryKeys.batch.qrMapping.query(params),
             queryFn: () => fetchQrMappingPageData(params),
             staleTime: 30_000,
         }),

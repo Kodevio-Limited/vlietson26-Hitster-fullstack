@@ -149,6 +149,16 @@ function SongsPageContent() {
     // skeleton so the loading experience is consistent.
     const isLoading = songsQuery.isPending || songsQuery.isFetching;
 
+    // Surface backend failures. Without this, a 500 on /api/songs
+    // renders an empty table with totalPages=1, and the admin can't
+    // tell whether the library is empty or the request died. Toasting
+    // on the error state is intentional; consecutive identical toasts
+    // are deduped by sonner.
+    useEffect(() => {
+        if (!songsQuery.isError) return;
+        toast.error(songsQuery.error?.message ?? "Failed to load songs");
+    }, [songsQuery.isError, songsQuery.error]);
+
     const [editingSong, setEditingSong] = useState<UiSong | null>(null);
     const [deletingSong, setDeletingSong] = useState<UiSong | null>(null);
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -442,54 +452,79 @@ function SongsPageContent() {
                     </div>
                 </div>
 
-                <div className="space-y-3 md:hidden">
-                    {isLoading ? <SkeletonTable /> : null}
-                    {songs.map((song) => (
-                        <article key={`mobile-${song.id}`} className="rounded-lg border border-border bg-card p-4 shadow-sm">
-                            <div className="space-y-1">
-                                <p className="text-xs font-medium text-muted-foreground">Song #{song.spotifyId}</p>
-                                <h3 className="text-base font-semibold text-foreground">{song.songName}</h3>
-                                <p className="break-all text-sm text-muted-foreground">{song.ArtistName}</p>
-                            </div>
-                            <div className="mt-3">
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger className="inline-flex h-8 items-center justify-center gap-1 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground">
-                                        Action
-                                        <ChevronDown className="size-4" />
-                                    </DropdownMenuTrigger>
+                {songsQuery.isError ? (
+                    <div
+                        role="alert"
+                        className="rounded-lg border border-red-200 bg-red-50 p-6 text-red-900"
+                    >
+                        <h2 className="text-[20px] font-semibold leading-tight">
+                            Couldn&apos;t load songs
+                        </h2>
+                        <p className="mt-2 text-sm">
+                            Something went wrong fetching the song list. Check
+                            the toast above for the server message, or try
+                            again in a moment.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => void songsQuery.refetch()}
+                            className="mt-4 inline-flex h-9 items-center rounded-[5px] border border-red-300 bg-white px-3 text-sm font-medium text-red-900 hover:bg-red-100"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                ) : (
+                    <>
+                        <div className="space-y-3 md:hidden">
+                            {isLoading ? <SkeletonTable /> : null}
+                            {songs.map((song) => (
+                                <article key={`mobile-${song.id}`} className="rounded-lg border border-border bg-card p-4 shadow-sm">
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-medium text-muted-foreground">Song #{song.spotifyId}</p>
+                                        <h3 className="text-base font-semibold text-foreground">{song.songName}</h3>
+                                        <p className="break-all text-sm text-muted-foreground">{song.ArtistName}</p>
+                                    </div>
+                                    <div className="mt-3">
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger className="inline-flex h-8 items-center justify-center gap-1 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground">
+                                                Action
+                                                <ChevronDown className="size-4" />
+                                            </DropdownMenuTrigger>
 
-                                    <DropdownMenuContent align="start" className="w-40">
-                                        <DropdownMenuItem onClick={() => handleEditSong(song)}>Edit</DropdownMenuItem>
-                                        <DropdownMenuItem>Disable</DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => void handleDownloadQr(song)}>Download QR</DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => handleRegenerateQr(song)}>Regenerate QR</DropdownMenuItem>
-                                        <DropdownMenuItem variant="destructive" onClick={() => handleDeleteSong(song)}>
-                                            Delete
-                                        </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            </div>
-                        </article>
-                    ))}
-                </div>
+                                            <DropdownMenuContent align="start" className="w-40">
+                                                <DropdownMenuItem onClick={() => handleEditSong(song)}>Edit</DropdownMenuItem>
+                                                <DropdownMenuItem>Disable</DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => void handleDownloadQr(song)}>Download QR</DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => handleRegenerateQr(song)}>Regenerate QR</DropdownMenuItem>
+                                                <DropdownMenuItem variant="destructive" onClick={() => handleDeleteSong(song)}>
+                                                    Delete
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </div>
+                                </article>
+                            ))}
+                        </div>
 
-                <div className="hidden md:block">
-                    {isLoading ? (
-                        <SkeletonTable />
-                    ) : (
-                        <DataTable
-                            columns={columns}
-                            data={songs}
-                            pageCount={totalPages}
-                            pagination={{ pageIndex: page - 1, pageSize: limit }}
-                            onPaginationChange={(newPagination) => {
-                                setUrlParams({ page: String(newPagination.pageIndex + 1) });
-                            }}
-                            sorting={sorting}
-                            onSortingChange={handleSortingChange}
-                        />
-                    )}
-                </div>
+                        <div className="hidden md:block">
+                            {isLoading ? (
+                                <SkeletonTable />
+                            ) : (
+                                <DataTable
+                                    columns={columns}
+                                    data={songs}
+                                    pageCount={totalPages}
+                                    pagination={{ pageIndex: page - 1, pageSize: limit }}
+                                    onPaginationChange={(newPagination) => {
+                                        setUrlParams({ page: String(newPagination.pageIndex + 1) });
+                                    }}
+                                    sorting={sorting}
+                                    onSortingChange={handleSortingChange}
+                                />
+                            )}
+                        </div>
+                    </>
+                )}
 
                 <AddSongDialogContent onSongAdded={handleAddSong} />
 

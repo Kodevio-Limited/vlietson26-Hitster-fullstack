@@ -67,14 +67,16 @@ export class AuthService {
     });
 
     if (!user) {
-      // Check if this email is an admin
-      const isAdmin = this.isAdminEmail(spotifyUser.email);
-
+      // Role must never be granted by a public endpoint. Until the
+      // DB-driven admin flag (deferred) lands, default every new user
+      // — register or Spotify login — to 'user'. Existing admin rows
+      // keep their role on re-login; new admins are created by promoting
+      // an existing user out of band.
       user = this.userRepository.create({
         email: spotifyUser.email,
         spotifyId: spotifyUser.id,
         displayName: spotifyUser.display_name,
-        role: isAdmin ? 'admin' : 'user',
+        role: 'user',
         spotifyAccessToken: spotifyTokens.access_token,
         spotifyRefreshToken: spotifyTokens.refresh_token,
         spotifyTokenExpiresAt: new Date(
@@ -252,13 +254,16 @@ export class AuthService {
     }
 
     const hashedPassword = await bcrypt.hash(registerDto.password, 10);
-    const isAdmin = this.isAdminEmail(registerDto.email);
 
+    // Role must never be granted by a public endpoint. Until the
+    // DB-driven admin flag (deferred) lands, default every new user
+    // to 'user'. `isAdminEmail()` is retained as a private helper for
+    // the future admin-invite flow but is not consulted here.
     const user = this.userRepository.create({
       email: registerDto.email,
       password: hashedPassword,
       displayName: registerDto.displayName || registerDto.email.split('@')[0],
-      role: isAdmin ? 'admin' : 'user',
+      role: 'user',
       lastLoginAt: new Date(),
     });
 

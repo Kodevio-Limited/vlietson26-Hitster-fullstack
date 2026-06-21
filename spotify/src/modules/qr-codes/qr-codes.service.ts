@@ -162,6 +162,26 @@ export class QrCodesService {
     this.logger.debug(`Incremented scans for QR: ${identifier}`);
   }
 
+  /**
+   * Hot-path increment: only updates the row if it's still active. The
+   * atomic SQL `UPDATE ... WHERE identifier = ? AND is_active = true`
+   * collapses the read+write pair the controller used to do into one
+   * statement, closing the TOCTOU window where a deactivation between
+   * the active-check and the increment would still bump the counter.
+   *
+   * Returns the number of affected rows: 0 means the QR was deactivated
+   * or deleted between the controller's `findMetaByIdentifier` and this
+   * call — the caller should treat that as a 410 GONE.
+   */
+  async incrementScansIfActive(identifier: string): Promise<number> {
+    const result = await this.qrCodeRepository.increment(
+      { identifier, isActive: true },
+      'scans',
+      1,
+    );
+    return result.affected ?? 0;
+  }
+
   async deactivate(id: string): Promise<QrCode> {
     const qrCode = await this.findOne(id);
     qrCode.isActive = false;

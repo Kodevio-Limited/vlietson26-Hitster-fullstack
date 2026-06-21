@@ -28,7 +28,7 @@ export function useCreateMapping() {
             queryClient.invalidateQueries({ queryKey: queryKeys.mappings.all });
             queryClient.invalidateQueries({ queryKey: queryKeys.songs.all });
             queryClient.invalidateQueries({ queryKey: queryKeys.qrCodes.all });
-            queryClient.invalidateQueries({ queryKey: queryKeys.batch.dashboard({}) });
+            queryClient.invalidateQueries({ queryKey: queryKeys.batch.dashboard.all });
         },
     });
 }
@@ -53,7 +53,7 @@ export function useDeleteMapping() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.mappings.all });
             queryClient.invalidateQueries({ queryKey: queryKeys.songs.all });
-            queryClient.invalidateQueries({ queryKey: queryKeys.batch.dashboard({}) });
+            queryClient.invalidateQueries({ queryKey: queryKeys.batch.dashboard.all });
         },
     });
 }

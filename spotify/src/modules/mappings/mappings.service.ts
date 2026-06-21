@@ -222,4 +222,45 @@ export class MappingsService {
 
     return mapping;
   }
+
+  /**
+   * Hot-path version of `getActiveMappingByQrIdentifier`. Takes the QR
+   * id (already returned by `findMetaByIdentifier` on the scan path) and
+   * skips the heavy `findByIdentifier` call that eagerly loads
+   * `mappings` + `mappings.song` + `mappings.qrCard`. Uses a slim
+   * `select` so only the columns the redirect endpoint actually reads
+   * come back from the DB.
+   *
+   * Two queries on the original hot path (findMeta + this lookup)
+   * become two; the redundant third query (findByIdentifier re-fetching
+   * the same QR row to recover its id) is gone.
+   */
+  async getActiveMappingByQrCodeId(qrCodeId: string): Promise<Mapping | null> {
+    return this.mappingRepository.findOne({
+      where: { qrCodeId, isActive: true },
+      relations: ['song'],
+      // Slim SELECT: only what `qr-redirect.controller.ts` projects into
+      // `songInfo`. Avoids loading `previewUrl`/`spotifyUrl`/etc. on the
+      // mapping row and the full song row.
+      select: {
+        id: true,
+        isActive: true,
+        songId: true,
+        qrCodeId: true,
+        song: {
+          id: true,
+          name: true,
+          artist: true,
+          releaseYear: true,
+          spotifyTrackId: true,
+          albumImageUrl: true,
+          previewUrl: true,
+        },
+      },
+      // Deterministic ordering as a safety net; the (qrCodeId) WHERE
+      // is_active=true index should still return at most one row once
+      // the partial unique index migration is applied.
+      order: { createdAt: 'DESC' },
+    });
+  }
 }

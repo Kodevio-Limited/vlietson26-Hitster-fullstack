@@ -51,10 +51,21 @@ export const queryKeys = {
         available: () => ["qrCards", "available"] as const,
     },
     batch: {
-        dashboard: (params: BatchDashboardParams) =>
-            ["batch", "dashboard", params] as const,
-        qrMapping: (params: BatchQrMappingParams) =>
-            ["batch", "qrMapping", params] as const,
+        all: ["batch"] as const,
+        dashboard: {
+            // Prefix that invalidates every dashboard variant
+            // (e.g. dashboard({ songLimit: 1 }) and dashboard({})).
+            // Use this in mutation `onSuccess`, never the empty-params
+            // shape below — empty params targets a key nothing reads.
+            all: ["batch", "dashboard"] as const,
+            query: (params: BatchDashboardParams) =>
+                ["batch", "dashboard", params] as const,
+        },
+        qrMapping: {
+            all: ["batch", "qrMapping"] as const,
+            query: (params: BatchQrMappingParams) =>
+                ["batch", "qrMapping", params] as const,
+        },
     },
     notifications: {
         all: ["notifications"] as const,

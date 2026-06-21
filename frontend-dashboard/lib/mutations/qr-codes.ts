@@ -18,8 +18,7 @@ export function useCreateQrCode() {
             createQrCode(payload),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.qrCodes.all });
-            queryClient.invalidateQueries({ queryKey: queryKeys.qrCards.all });
-            queryClient.invalidateQueries({ queryKey: queryKeys.batch.dashboard({}) });
+            queryClient.invalidateQueries({ queryKey: queryKeys.batch.dashboard.all });
         },
     });
 }

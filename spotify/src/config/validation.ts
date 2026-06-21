@@ -57,6 +57,14 @@ export function validate(config: Record<string, unknown>) {
     throw new Error('JWT_SECRET is required in production');
   }
 
+  // JWT_EXPIRES_IN must be set in production. Without it, jsonwebtoken
+  // issues tokens with no `exp` claim — combined with the missing JWT
+  // revocation on `resetPassword` (deferred to PR-3 #7), those tokens
+  // become permanent until JWT_SECRET is rotated.
+  if (isProd && !config.JWT_EXPIRES_IN) {
+    throw new Error('JWT_EXPIRES_IN is required in production');
+  }
+
   const validatedConfig = plainToClass(EnvironmentVariables, config, {
     enableImplicitConversion: true,
   });
