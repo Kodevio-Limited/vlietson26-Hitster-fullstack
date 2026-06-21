@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { ValidationPipe, Logger, RequestMethod } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -24,6 +25,22 @@ async function bootstrap() {
   app.use(bodyParser.json({ limit: '10mb' }));
   app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 
+  // Short-circuit well-known noisy probes BEFORE the router sees them.
+  // Without this, every VS Code session with "JavaScript Debug Auto
+  // Attach" enabled hits `GET /__tsd/console-pipe/sse` and produces a
+  // 404 in the logs, and browsers auto-request `/favicon.ico`. 204
+  // No Content is the right answer for both.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (
+      req.path.startsWith('/__') ||
+      req.path === '/favicon.ico' ||
+      req.path === '/robots.txt'
+    ) {
+      return res.status(204).end();
+    }
+    next();
+  });
+
   // Enable CORS. In production we require FRONTEND_URL to be set; the
   // configuration loader falls back to localhost in dev only.
   const frontendUrl = configService.get<string>('frontendUrl');
@@ -45,8 +62,12 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Global prefix
-  app.setGlobalPrefix('api');
+  // Global prefix. `GET /` is excluded so a hit on the backend root
+  // returns API metadata (see AppController.getApiInfo) instead of
+  // 404. All other routes still get the `/api` prefix.
+  app.setGlobalPrefix('api', {
+    exclude: [{ path: '', method: RequestMethod.GET }],
+  });
 
   // Global validation pipe
   app.useGlobalPipes(

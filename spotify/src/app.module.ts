@@ -14,6 +14,7 @@ import { MailModule } from './modules/mail/mail.module';
 import { BatchModule } from './modules/batch/batch.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { QrRedirectController } from './modules/qr-redirect/qr-redirect.controller';
+import { HealthModule } from './health/health.module';
 import { Song } from './modules/songs/entities/song.entity';
 import { QrCode } from './modules/qr-codes/entities/qr-code.entity';
 import { QrCard } from './modules/qr-cards/entities/qr-card.entity';
@@ -72,6 +73,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
     MailModule,
     BatchModule,
     NotificationsModule,
+    HealthModule,
   ],
   controllers: [QrRedirectController],
   providers: [

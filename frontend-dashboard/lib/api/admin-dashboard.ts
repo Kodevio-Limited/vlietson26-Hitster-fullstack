@@ -239,6 +239,19 @@ type BatchQrMappingResponse = {
     };
 };
 
+export type BatchDashboardParams = {
+    songPage?: number;
+    songLimit?: number;
+    mappingPage?: number;
+    mappingLimit?: number;
+};
+
+export type BatchQrMappingParams = {
+    mappingPage?: number;
+    mappingLimit?: number;
+    songLimit?: number;
+};
+
 export async function fetchDashboardData(params?: {
     songPage?: number;
     songLimit?: number;

@@ -4,10 +4,20 @@ import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { importSong, deleteSong, fetchSongs, updateSong, regenerateSongQr, getSongQrCode, importBulkSongs, exportSongsCsv } from "@/lib/api/admin-dashboard";
+import {
+    useBulkImportSongs,
+    useCreateSong,
+    useDeleteSong,
+    useRegenerateSongQr,
+    useUpdateSong,
+} from "@/lib/mutations/songs";
+import { songQueries } from "@/lib/queries/songs";
+import { exportSongsCsv } from "@/lib/api/admin-dashboard";
 import { ChevronDown, Download, Loader2, Plus, Search, Upload } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef, SortingState } from "@tanstack/react-table";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -39,19 +49,134 @@ type UiSong = {
     spotifyId: string;
 };
 
+// Map the table column IDs to the API's sortBy field names. Keeping
+// the mapping colocated with the page so it's easy to update when
+// columns are added.
+const SORT_BY_MAP: Record<string, string> = {
+    songName: "name",
+    ArtistName: "artist",
+    spotifyId: "spotifyTrackId",
+};
 
+// `useSearchParams` requires a Suspense boundary when used inside a
+// client component that's prerendered (Next.js 16 default). We split
+// the page into a thin default export and the actual content; the
+// content is rendered inside `<Suspense>` at the bottom of the file.
 export default function SongsPage() {
-    const [songs, setSongs] = useState<UiSong[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [page, setPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(1);
-    const [query, setQuery] = useState("");
+    return (
+        <Suspense fallback={<SkeletonTable />}>
+            <SongsPageContent />
+        </Suspense>
+    );
+}
+
+function SongsPageContent() {
+    const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
+    const queryClient = useQueryClient();
+
+    // Read all paginated/filter state from the URL so deep links work
+    // (fixes the "?page=3 loads page 1" bug noted in the deferred-work
+    // section of CLAUDE.md).
+    const page = Number(searchParams.get("page") ?? "1") || 1;
+    const q = searchParams.get("q") ?? "";
+    const sortId = searchParams.get("sort") ?? undefined;
+    const sortDir = (searchParams.get("order") ?? undefined) as "ASC" | "DESC" | undefined;
+    const limit = 10;
+
+    const sortBy = sortId ? SORT_BY_MAP[sortId] : undefined;
+    const sortOrder = sortBy ? sortDir : undefined;
+
+    // The search input is bound to local state for typing responsiveness.
+    // We keep it in sync with the URL so browser back/forward works.
+    const [searchInput, setSearchInput] = useState(q);
+    useEffect(() => {
+        setSearchInput(q);
+    }, [q]);
+
+    const setUrlParams = useCallback(
+        (updates: Record<string, string | null | undefined>) => {
+            const params = new URLSearchParams(searchParams.toString());
+            for (const [key, value] of Object.entries(updates)) {
+                if (value === null || value === undefined || value === "") {
+                    params.delete(key);
+                } else {
+                    params.set(key, value);
+                }
+            }
+            const qs = params.toString();
+            router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+        },
+        [pathname, router, searchParams],
+    );
+
+    const handleSearchChange = (value: string) => {
+        setSearchInput(value);
+        setUrlParams({ q: value, page: null });
+    };
+
+    // The single query that drives the table. The query key includes
+    // every URL-derived input, so navigating or pasting a URL with new
+    // params just works — Query picks it up.
+    const songsQuery = useQuery(
+        songQueries.list({
+            q: q || undefined,
+            page,
+            limit,
+            sortBy,
+            sortOrder,
+        }),
+    );
+
+    const songs = useMemo<UiSong[]>(
+        () =>
+            (songsQuery.data?.items ?? []).map((song) => ({
+                id: song.id,
+                songName: song.name,
+                ArtistName: song.artist,
+                releaseYear: String(song.releaseYear),
+                spotifyId: song.spotifyTrackId,
+            })),
+        [songsQuery.data],
+    );
+
+    const totalPages = songsQuery.data?.totalPages ?? 1;
+    // Show the SkeletonTable during any fetch — both the initial load
+    // (`isPending`, no data yet) and page/sort/search changes
+    // (`isFetching` with existing data). The DataTable's own internal
+    // "Loading data..." row is no longer used; we prefer the full-page
+    // skeleton so the loading experience is consistent.
+    const isLoading = songsQuery.isPending || songsQuery.isFetching;
+
     const [editingSong, setEditingSong] = useState<UiSong | null>(null);
     const [deletingSong, setDeletingSong] = useState<UiSong | null>(null);
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-    const [sorting, setSorting] = useState<SortingState>([]);
 
-    const limit = 10;
+    const sorting: SortingState = sortId
+        ? [{ id: sortId, desc: sortDir === "DESC" }]
+        : [];
+
+    const handleSortingChange = (next: SortingState) => {
+        if (next.length === 0) {
+            setUrlParams({ sort: null, order: null, page: null });
+            return;
+        }
+        const first = next[0];
+        setUrlParams({
+            sort: first.id,
+            order: first.desc ? "DESC" : "ASC",
+            page: null,
+        });
+    };
+
+    // --- Mutations ---
+
+    const createSong = useCreateSong();
+    const updateSong = useUpdateSong();
+    const deleteSong = useDeleteSong();
+    const bulkImport = useBulkImportSongs();
+    const regenerateQr = useRegenerateSongQr();
 
     const [isImporting, setIsImporting] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -67,7 +192,7 @@ export default function SongsPage() {
             const text = await file.text();
             const urlRegex = /https?:\/\/open\.spotify\.com\/track\/[a-zA-Z0-9]+/g;
             const matches = text.match(urlRegex) || [];
-            
+
             const uniqueUrls = Array.from(new Set(matches));
 
             if (uniqueUrls.length === 0) {
@@ -77,114 +202,52 @@ export default function SongsPage() {
 
             toast.loading(`Found ${uniqueUrls.length} valid Spotify URLs. Importing...`, { id: toastId });
 
-            const result = await importBulkSongs(uniqueUrls);
+            const result = await bulkImport.mutateAsync(uniqueUrls);
             toast.success(`Bulk import completed. Successful: ${result.successful}, Failed: ${result.failed}`, { id: toastId });
-            
-            setPage(1);
-            await loadSongs(1, query, sorting);
+
+            setUrlParams({ page: null });
         } catch (error) {
             const message = error instanceof Error ? error.message : "Failed to bulk import songs";
             toast.error(message, { id: toastId });
         } finally {
             setIsImporting(false);
             if (fileInputRef.current) {
-                fileInputRef.current.value = '';
+                fileInputRef.current.value = "";
             }
         }
     };
 
     const handleExportCsv = async () => {
+        const toastId = toast.loading("Generating CSV export...");
         try {
-            const toastId = toast.loading("Generating CSV export...");
             await exportSongsCsv();
             toast.success("CSV Export successful!", { id: toastId });
         } catch (error) {
             const message = error instanceof Error ? error.message : "Failed to export CSV";
-            toast.error(message);
+            toast.error(message, { id: toastId });
         }
     };
-
-    const loadSongs = async (activePage: number, activeQuery: string, activeSorting: SortingState) => {
-        setIsLoading(true);
-        const sortBy = activeSorting.length > 0 ? activeSorting[0].id : undefined;
-        const sortOrder = activeSorting.length > 0 ? (activeSorting[0].desc ? 'DESC' : 'ASC') : undefined;
-
-        let mappedSortBy = sortBy;
-        if (sortBy === 'songName') mappedSortBy = 'name';
-        if (sortBy === 'ArtistName') mappedSortBy = 'artist';
-        if (sortBy === 'spotifyId') mappedSortBy = 'spotifyTrackId';
-
-        const response = await fetchSongs({ 
-            q: activeQuery || undefined, 
-            page: activePage, 
-            limit,
-            sortBy: mappedSortBy,
-            sortOrder,
-        });
-
-        setSongs(
-            response.items.map((song) => ({
-                id: song.id,
-                songName: song.name,
-                ArtistName: song.artist,
-                releaseYear: String(song.releaseYear),
-                spotifyId: song.spotifyTrackId,
-            })),
-        );
-        setTotalPages(response.totalPages || 1);
-        setIsLoading(false);
-    };
-
-    useEffect(() => {
-        let isMounted = true;
-
-        const run = async () => {
-            try {
-                await loadSongs(page, query, sorting);
-            } catch (error) {
-                if (!isMounted) {
-                    return;
-                }
-
-                const message = error instanceof Error ? error.message : "Failed to load songs";
-                toast.error(message);
-                setSongs([]);
-                setTotalPages(1);
-            } finally {
-                if (isMounted) {
-                    setIsLoading(false);
-                }
-            }
-        };
-
-        void run();
-
-        return () => {
-            isMounted = false;
-        };
-    }, [page, query, sorting]);
-
-
 
     const handleAddSong = async (payload: { spotifyUrl: string }) => {
+        // The AddSongDialog awaits this and surfaces server errors in
+        // its own onError path. We use `mutateAsync` so the dialog's
+        // try/catch sees a real Promise.
         try {
-            await importSong(payload.spotifyUrl);
+            await createSong.mutateAsync(payload);
             setIsAddDialogOpen(false);
-            setPage(1);
-            await loadSongs(1, query, sorting);
+            setUrlParams({ page: null });
             toast.success("Song successfully added!");
         } catch (error) {
-            const message = error instanceof Error ? error.message : "Failed to add song";
-            toast.error(message);
+            toast.error(error instanceof Error ? error.message : "Failed to add song");
         }
     };
 
-    const handleEditSong = async (song: UiSong) => {
+    const handleEditSong = (song: UiSong) => {
         setDeletingSong(null);
         setEditingSong(song);
     };
 
-    const handleDeleteSong = async (song: UiSong) => {
+    const handleDeleteSong = (song: UiSong) => {
         setEditingSong(null);
         setDeletingSong(song);
     };
@@ -197,67 +260,72 @@ export default function SongsPage() {
         spotifyTrackId: string;
     }) => {
         try {
-            await updateSong(payload.id, {
-                name: payload.name,
-                artist: payload.artist,
-                releaseYear: payload.releaseYear,
-                spotifyTrackId: payload.spotifyTrackId,
+            await updateSong.mutateAsync({
+                id: payload.id,
+                payload: {
+                    name: payload.name,
+                    artist: payload.artist,
+                    releaseYear: payload.releaseYear,
+                    spotifyTrackId: payload.spotifyTrackId,
+                },
             });
-            await loadSongs(page, query, sorting);
             setEditingSong(null);
             toast.success("Song successfully updated!");
         } catch (error) {
-            const message = error instanceof Error ? error.message : "Failed to update song";
-            toast.error(message);
+            toast.error(error instanceof Error ? error.message : "Failed to update song");
         }
     };
 
     const handleConfirmDelete = async () => {
-        if (!deletingSong) {
-            return;
-        }
-
+        if (!deletingSong) return;
+        const id = deletingSong.id;
         try {
-            await deleteSong(deletingSong.id);
-            await loadSongs(page, query, sorting);
+            await deleteSong.mutateAsync(id);
             setDeletingSong(null);
             toast.success("Song successfully deleted!");
         } catch (error) {
-            const message = error instanceof Error ? error.message : "Failed to delete song";
-            toast.error(message);
+            toast.error(error instanceof Error ? error.message : "Failed to delete song");
         }
     };
 
-    const handleRegenerateQr = async (song: UiSong) => {
-        try {
-            const loadingToast = toast.loading(`Regenerating QR for ${song.songName}...`);
-            await regenerateSongQr(song.id);
-            toast.dismiss(loadingToast);
-            toast.success("QR Code successfully regenerated!");
-        } catch (error) {
-            const message = error instanceof Error ? error.message : "Failed to regenerate QR code";
-            toast.error(message);
-        }
+    const handleRegenerateQr = (song: UiSong) => {
+        // `mutate` is fine here — no dialog is waiting on the result,
+        // and the loading toast serves as the loading indicator.
+        const loadingToast = toast.loading(`Regenerating QR for ${song.songName}...`);
+        regenerateQr.mutate(song.id, {
+            onSuccess: () => {
+                toast.dismiss(loadingToast);
+                toast.success("QR Code successfully regenerated!");
+            },
+            onError: (error) => {
+                toast.dismiss(loadingToast);
+                toast.error(error.message || "Failed to regenerate QR code");
+            },
+        });
     };
 
     const handleDownloadQr = async (song: UiSong) => {
+        const loadingToast = toast.loading(`Preparing QR for ${song.songName}...`);
         try {
-            const loadingToast = toast.loading(`Preparing QR for ${song.songName}...`);
-            const qrCode = await getSongQrCode(song.id);
+            // Use the existing query to get a cached result if available.
+            // `fetchQuery` returns the cached value (if fresh) or fetches
+            // if missing/stale.
+            const qr = await queryClient.fetchQuery(songQueries.qr(song.id));
             toast.dismiss(loadingToast);
 
-            if (!qrCode || !qrCode.imageUrl) {
-                 toast.error("No QR Code image found for this song.");
-                 return;
+            if (!qr || !qr.imageUrl) {
+                toast.error("No QR Code image found for this song.");
+                return;
             }
 
-            const link = document.createElement('a');
-            link.href = qrCode.imageUrl;
-            link.download = `QR_${song.songName.replace(/\s+/g, '_')}.png`;
+            const link = document.createElement("a");
+            link.href = qr.imageUrl;
+            link.download = `QR_${song.songName.replace(/\s+/g, "_")}.png`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
         } catch (error) {
+            toast.dismiss(loadingToast);
             const message = error instanceof Error ? error.message : "Failed to download QR code";
             toast.error(message);
         }
@@ -297,11 +365,11 @@ export default function SongsPage() {
                             </DropdownMenuTrigger>
 
                             <DropdownMenuContent align="start" className="w-40">
-                                <DropdownMenuItem onClick={() => void handleEditSong(song)}>Edit</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleEditSong(song)}>Edit</DropdownMenuItem>
                                 <DropdownMenuItem>Disable</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => void handleDownloadQr(song)}>Download QR</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => void handleRegenerateQr(song)}>Regenerate QR</DropdownMenuItem>
-                                <DropdownMenuItem variant="destructive" onClick={() => void handleDeleteSong(song)}>
+                                <DropdownMenuItem onClick={() => handleRegenerateQr(song)}>Regenerate QR</DropdownMenuItem>
+                                <DropdownMenuItem variant="destructive" onClick={() => handleDeleteSong(song)}>
                                     Delete
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -310,7 +378,8 @@ export default function SongsPage() {
                 },
             },
         ],
-        []
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- handlers are stable, sorting/page is intentionally excluded
+        [],
     );
 
     return (
@@ -327,42 +396,39 @@ export default function SongsPage() {
                             <Input
                                 type="search"
                                 placeholder="Search"
-                                value={query}
-                                onChange={(event) => {
-                                    setQuery(event.target.value);
-                                    setPage(1);
-                                }}
+                                value={searchInput}
+                                onChange={(event) => handleSearchChange(event.target.value)}
                             />
                             <Search className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
                         </div>
 
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                            <input 
-                                type="file" 
-                                accept=".csv" 
-                                className="hidden" 
-                                ref={fileInputRef} 
-                                onChange={(e) => void handleFileUpload(e)} 
+                            <input
+                                type="file"
+                                accept=".csv"
+                                className="hidden"
+                                ref={fileInputRef}
+                                onChange={(e) => void handleFileUpload(e)}
                                 disabled={isImporting}
                             />
-                            <Button 
-                                variant="outline" 
-                                className="h-11.5 rounded-[5px] px-3 text-[16px] font-medium" 
+                            <Button
+                                variant="outline"
+                                className="h-11.5 rounded-[5px] px-3 text-[16px] font-medium"
                                 onClick={() => fileInputRef.current?.click()}
                                 disabled={isImporting}
                             >
                                 {isImporting ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Upload className="mr-2 size-4" />}
                                 Bulk Upload
                             </Button>
-                            <Button 
-                                variant="outline" 
+                            <Button
+                                variant="outline"
                                 className="h-11.5 rounded-[5px] px-3 text-[16px] font-medium"
                                 onClick={() => void handleExportCsv()}
                             >
                                 <Download className="mr-2 size-4" />
                                 Export CSV
                             </Button>
-                            
+
                             <DialogTrigger asChild>
                                 <Button
                                     className="h-11.5 rounded-[5px] bg-black px-3 text-[16px] font-medium text-white hover:bg-black/95"
@@ -377,9 +443,7 @@ export default function SongsPage() {
                 </div>
 
                 <div className="space-y-3 md:hidden">
-                    {isLoading && songs.length === 0 ? (
-                        <SkeletonTable />
-                    ) : null}
+                    {isLoading ? <SkeletonTable /> : null}
                     {songs.map((song) => (
                         <article key={`mobile-${song.id}`} className="rounded-lg border border-border bg-card p-4 shadow-sm">
                             <div className="space-y-1">
@@ -395,11 +459,11 @@ export default function SongsPage() {
                                     </DropdownMenuTrigger>
 
                                     <DropdownMenuContent align="start" className="w-40">
-                                        <DropdownMenuItem onClick={() => void handleEditSong(song)}>Edit</DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => handleEditSong(song)}>Edit</DropdownMenuItem>
                                         <DropdownMenuItem>Disable</DropdownMenuItem>
                                         <DropdownMenuItem onClick={() => void handleDownloadQr(song)}>Download QR</DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => void handleRegenerateQr(song)}>Regenerate QR</DropdownMenuItem>
-                                        <DropdownMenuItem variant="destructive" onClick={() => void handleDeleteSong(song)}>
+                                        <DropdownMenuItem onClick={() => handleRegenerateQr(song)}>Regenerate QR</DropdownMenuItem>
+                                        <DropdownMenuItem variant="destructive" onClick={() => handleDeleteSong(song)}>
                                             Delete
                                         </DropdownMenuItem>
                                     </DropdownMenuContent>
@@ -410,22 +474,19 @@ export default function SongsPage() {
                 </div>
 
                 <div className="hidden md:block">
-                    {isLoading && songs.length === 0 ? (
+                    {isLoading ? (
                         <SkeletonTable />
                     ) : (
-                        <DataTable 
-                            columns={columns} 
-                            data={songs} 
-                            pageCount={totalPages} 
+                        <DataTable
+                            columns={columns}
+                            data={songs}
+                            pageCount={totalPages}
                             pagination={{ pageIndex: page - 1, pageSize: limit }}
                             onPaginationChange={(newPagination) => {
-                                setPage(newPagination.pageIndex + 1);
+                                setUrlParams({ page: String(newPagination.pageIndex + 1) });
                             }}
                             sorting={sorting}
-                            onSortingChange={(newSorting) => {
-                                setSorting(newSorting);
-                                setPage(1);
-                            }}
+                            onSortingChange={handleSortingChange}
                         />
                     )}
                 </div>

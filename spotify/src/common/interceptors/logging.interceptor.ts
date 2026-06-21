@@ -36,10 +36,18 @@ export class LoggingInterceptor implements NestInterceptor {
         },
         error: (error) => {
           const duration = Date.now() - startTime;
-          this.logger.error(
-            `${method} ${url} ${error.status} - ${duration}ms - ${userAgent} ${ip} ${userRef} - Error: ${error.message}`,
-            error.stack,
-          );
+          const status = error.status ?? 500;
+          // 4xx (e.g. 404 for an unknown route) is a normal client
+          // outcome, not an operational error. Only 5xx gets the
+          // stack trace and error level.
+          const message = `${method} ${url} ${status} - ${duration}ms - ${userAgent} ${ip} ${userRef} - Error: ${error.message}`;
+          if (status >= 500) {
+            this.logger.error(message, error.stack);
+          } else if (status >= 400) {
+            this.logger.warn(message);
+          } else {
+            this.logger.error(message, error.stack);
+          }
         },
       }),
     );

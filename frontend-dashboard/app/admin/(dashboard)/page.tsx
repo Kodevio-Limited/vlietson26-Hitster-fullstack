@@ -1,8 +1,10 @@
 "use client";
 
-import { fetchDashboardData, fetchAvailableQrCardsCount } from "@/lib/api/admin-dashboard";
+import { batchQueries } from "@/lib/queries/batch";
+import { qrCardQueries } from "@/lib/queries/qr-cards";
 import { CircleHelp, Library, Music2, QrCode } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 
 type StatCardData = {
@@ -79,91 +81,54 @@ export function SkeletonSongRow() {
 }
 
 export default function Dashboard() {
-    const [isLoading, setIsLoading] = useState(true);
-    const [stats, setStats] = useState({
-        totalSongs: 0,
-        activeCards: 0,
-        unmappedSongs: 0,
-        collections: 0,
-    });
-    const [recentSongs, setRecentSongs] = useState<SongRowData[]>(fallbackRecentSongs);
+    // Both queries run in parallel; `useQuery` dedupes if they're hit
+    // from multiple components. The previous version used a manual
+    // useEffect + isMounted flag — Query handles that for us.
+    const dashboardQuery = useQuery(batchQueries.dashboard({ songLimit: 1 }));
+    const availableCardsQuery = useQuery(qrCardQueries.available());
 
-    useEffect(() => {
-        let isMounted = true;
+    const isLoading = dashboardQuery.isPending || availableCardsQuery.isPending;
 
-        const loadDashboardData = async () => {
-            setIsLoading(true);
-            try {
-                // Single batch call replaces four parallel endpoint calls.
-                // The backend's BatchService fans out the queries itself
-                // and returns the joined payload.
-                const [batch, cardsCount] = await Promise.all([
-                    fetchDashboardData({ songLimit: 1 }),
-                    fetchAvailableQrCardsCount(),
-                ]);
+    // Derive the stat cards and the recent-songs list from the batch
+    // payload. If the batch is still loading we get `null` and render
+    // the skeletons instead.
+    const { stats, recentSongs } = useMemo(() => {
+        const batch = dashboardQuery.data?.data;
+        if (!batch) {
+            return { stats: null, recentSongs: fallbackRecentSongs };
+        }
 
-                if (!isMounted) {
-                    return;
-                }
+        const totalSongs = batch.songs.total;
+        const activeMappingSongIds = new Set(
+            batch.mappings.data.filter((m) => m.isActive).map((m) => m.songId),
+        );
+        const unmappedSongs = Math.max(totalSongs - activeMappingSongIds.size, 0);
 
-                const totalSongs = batch.data.songs.total;
-                const mappings = batch.data.mappings.data;
-                const recentSongsResponse = batch.data.songs.items;
-
-                const activeMappingSongIds = new Set(
-                    mappings.filter((m) => m.isActive).map((m) => m.songId),
-                );
-                const unmappedSongs = Math.max(totalSongs - activeMappingSongIds.size, 0);
-
-                setStats({
-                    totalSongs,
-                    activeCards: cardsCount,
-                    unmappedSongs,
-                    collections: batch.data.mappings.total,
-                });
-
-                setRecentSongs(
-                    recentSongsResponse.map((song) => ({
-                        title: song.name,
-                        artist: song.artist,
-                        year:
-                            song.releaseYear !== undefined && song.releaseYear !== null
-                                ? String(song.releaseYear)
-                                : "-",
-                    })),
-                );
-            } catch {
-                if (!isMounted) {
-                    return;
-                }
-
-                setStats({
-                    totalSongs: 0,
-                    activeCards: 0,
-                    unmappedSongs: 0,
-                    collections: 0,
-                });
-                setRecentSongs([]);
-            } finally {
-                if (isMounted) {
-                    setIsLoading(false);
-                }
-            }
+        const stats = {
+            totalSongs,
+            activeCards: availableCardsQuery.data ?? 0,
+            unmappedSongs,
+            collections: batch.mappings.total,
         };
 
-        void loadDashboardData();
+        const recentSongs: SongRowData[] = batch.songs.items.map((song) => ({
+            title: song.name,
+            artist: song.artist,
+            year:
+                song.releaseYear !== undefined && song.releaseYear !== null
+                    ? String(song.releaseYear)
+                    : "-",
+        }));
 
-        return () => {
-            isMounted = false;
-        };
-    }, []);
+        return { stats, recentSongs };
+    }, [dashboardQuery.data, availableCardsQuery.data]);
 
     const statCards: StatCardData[] = useMemo(
         () => [
-            { title: "Total Songs", value: String(stats.totalSongs), icon: Music2 },
-            { title: "Active Cards", value: String(stats.activeCards), icon: QrCode },
-            { title: "Unmapped Songs", value: String(stats.unmappedSongs), icon: CircleHelp },
-            { title: "Collections", value: String(stats.collections), icon: Library },
+            { title: "Total Songs", value: String(stats?.totalSongs ?? 0), icon: Music2 },
+            { title: "Active Cards", value: String(stats?.activeCards ?? 0), icon: QrCode },
+            { title: "Unmapped Songs", value: String(stats?.unmappedSongs ?? 0), icon: CircleHelp },
+            { title: "Collections", value: String(stats?.collections ?? 0), icon: Library },
         ],
         [stats]
     );
@@ -188,10 +153,12 @@ export default function Dashboard() {
                 </header>
 
                 <div className="space-y-5 p-4 md:p-8">
-                    {isLoading && recentSongs.length === 0 ? (
+                    {isLoading ? (
                         Array.from({ length: 5 }).map((_, index) => (
                             <SkeletonSongRow key={index} />
                         ))
+                    ) : recentSongs.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No songs yet.</p>
                     ) : (
                         recentSongs.map((song, index) => (
                             <SongRow key={`${song.title}-${index}`} {...song} />

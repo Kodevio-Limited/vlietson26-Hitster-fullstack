@@ -4,10 +4,12 @@ import { useAppForm } from "@/components/form/form-context";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Bell, Shield, UserRound, Loader2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { apiClient } from "@/lib/api/client";
-import { fetchNotifications, markAllNotificationsRead, NotificationDto } from "@/lib/api/admin-dashboard";
+import { useQuery } from "@tanstack/react-query";
+import { notificationQueries } from "@/lib/queries/notifications";
+import { useMarkAllNotificationsRead } from "@/lib/mutations/notifications";
+import { useChangePassword, useUpdateProfile } from "@/lib/mutations/profile";
 
 type SettingsTab = "profile" | "security" | "notification";
 
@@ -72,38 +74,36 @@ function ProfilePanel({ user, onUpdate, focusImage }: { user: UserProfile | null
         }
     }, [focusImage]);
 
-    const [isLoading, setIsLoading] = useState(false);
+    const updateProfile = useUpdateProfile();
     const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-    const handleProfileSubmit = async () => {
-        setIsLoading(true);
+    const handleProfileSubmit = () => {
         setMessage(null);
-        try {
-            const { email, ...values } = form.state.values;
-            const payload = {
-                ...values,
-                imageUrl: values.imageUrl || undefined
-            };
-            console.log("[ProfilePanel] Submitting payload:", payload);
-            const response = await apiClient.post("/auth/update-profile", payload);
-            const updatedUser = response.data;
-
-            // Update localStorage
-            localStorage.setItem("user", JSON.stringify(updatedUser));
-            window.dispatchEvent(new Event("user-updated"));
-
-            // Notify parent
-            onUpdate(updatedUser);
-
-            setMessage({ type: "success", text: "Profile updated successfully!" });
-        } catch (err: unknown) {
-            console.error("[ProfilePanel] Update failed:", err);
-            const error = err as { response?: { data?: { message?: string } }, message?: string };
-            const errorMsg = error.response?.data?.message || error.message || "Failed to update profile";
-            setMessage({ type: "error", text: errorMsg });
-        } finally {
-            setIsLoading(false);
-        }
+        const values = form.state.values;
+        const payload = {
+            name: values.name,
+            email: values.email,
+            imageUrl: values.imageUrl || undefined,
+        };
+        updateProfile.mutate(payload, {
+            onSuccess: (updatedUser) => {
+                // Sync localStorage so the header avatar / sidebar reflect
+                // the change on the next render. The layout's `user-updated`
+                // listener picks this up.
+                localStorage.setItem("user", JSON.stringify(updatedUser));
+                window.dispatchEvent(new Event("user-updated"));
+                onUpdate(updatedUser);
+                setMessage({ type: "success", text: "Profile updated successfully!" });
+            },
+            onError: (error) => {
+                // The Axios error is preserved by the client interceptor —
+                // dig the server-provided message out of it.
+                const axiosLike = error as { response?: { data?: { message?: string } } };
+                const errorMsg =
+                    axiosLike.response?.data?.message ?? error.message ?? "Failed to update profile";
+                setMessage({ type: "error", text: errorMsg });
+            },
+        });
     };
 
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -118,13 +118,15 @@ function ProfilePanel({ user, onUpdate, focusImage }: { user: UserProfile | null
         reader.readAsDataURL(file);
     };
 
+    const isLoading = updateProfile.isPending;
+
     return (
         <section className="dashboard-card min-w-0 overflow-hidden">
             <div className="border-b border-border px-6 py-4">
                 <h2 className="text-xl font-semibold">Profile Setting</h2>
             </div>
 
-            {message && (
+            {message ? (
                 <div
                     className={`mx-6 mt-4 p-3 rounded-lg text-sm font-medium ${
                         message.type === "success" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-600"
@@ -132,7 +134,7 @@ function ProfilePanel({ user, onUpdate, focusImage }: { user: UserProfile | null
                 >
                     {message.text}
                 </div>
-            )}
+            ) : null}
 
             <div className="space-y-6 p-6">
                 <div className="flex items-center gap-3">
@@ -193,32 +195,39 @@ function SecurityPanel() {
     const form = useAppForm({
         defaultValues: { currentPassword: "", newPassword: "", confirmNewPassword: "" },
     });
-    const [isLoading, setIsLoading] = useState(false);
+    const changePassword = useChangePassword();
     const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-    const handleSecuritySubmit = async () => {
+    const handleSecuritySubmit = () => {
         const values = form.state.values;
         if (values.newPassword !== values.confirmNewPassword) {
             setMessage({ type: "error", text: "New passwords do not match" });
             return;
         }
 
-        setIsLoading(true);
         setMessage(null);
-        try {
-            await apiClient.post("/auth/change-password", {
+        changePassword.mutate(
+            {
                 currentPassword: values.currentPassword,
                 newPassword: values.newPassword,
-            });
-            setMessage({ type: "success", text: "Password changed successfully!" });
-            form.reset();
-        } catch (err: unknown) {
-            const error = err as { response?: { data?: { message?: string } } };
-            setMessage({ type: "error", text: error.response?.data?.message || "Failed to change password" });
-        } finally {
-            setIsLoading(false);
-        }
+            },
+            {
+                onSuccess: () => {
+                    setMessage({ type: "success", text: "Password changed successfully!" });
+                    form.reset();
+                },
+                onError: (error) => {
+                    const axiosLike = error as { response?: { data?: { message?: string } } };
+                    setMessage({
+                        type: "error",
+                        text: axiosLike.response?.data?.message ?? "Failed to change password",
+                    });
+                },
+            },
+        );
     };
+
+    const isLoading = changePassword.isPending;
 
     return (
         <section className="dashboard-card min-w-0 overflow-hidden">
@@ -226,7 +235,7 @@ function SecurityPanel() {
                 <h2 className="text-xl font-semibold">Security</h2>
             </div>
 
-            {message && (
+            {message ? (
                 <div
                     className={`mx-6 mt-4 p-3 rounded-lg text-sm font-medium ${
                         message.type === "success" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-600"
@@ -234,7 +243,7 @@ function SecurityPanel() {
                 >
                     {message.text}
                 </div>
-            )}
+            ) : null}
 
             <form
                 className="grid gap-4 p-6 pt-4"
@@ -267,9 +276,18 @@ function SecurityPanel() {
 function NotificationPanel() {
     const [securityAlertsEnabled, setSecurityAlertsEnabled] = useState(true);
     const [contentAlertsEnabled, setContentAlertsEnabled] = useState(true);
-    const [isLoading, setIsLoading] = useState(true);
-    const [unreadCount, setUnreadCount] = useState(0);
-    const [items, setItems] = useState<NotificationDto[]>([]);
+
+    // Background-refreshing query. The default options for this query
+    // set `refetchInterval: 60_000` so new notifications surface on
+    // their own; the "Refresh" button just calls `refetch()`.
+    const notificationsQuery = useQuery(notificationQueries.list(12));
+    const markAllRead = useMarkAllNotificationsRead();
+
+    const items = useMemo(
+        () => notificationsQuery.data?.data ?? [],
+        [notificationsQuery.data],
+    );
+    const unreadCount = notificationsQuery.data?.unreadCount ?? 0;
 
     const filteredItems = useMemo(
         () =>
@@ -285,27 +303,14 @@ function NotificationPanel() {
         [items, securityAlertsEnabled, contentAlertsEnabled],
     );
 
-    const loadNotifications = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const response = await fetchNotifications(12);
-            setItems(response.data);
-            setUnreadCount(response.unreadCount);
-        } catch {
-            setItems([]);
-            setUnreadCount(0);
-        } finally {
-            setIsLoading(false);
-        }
-    }, []);
+    const isLoading = notificationsQuery.isPending;
 
-    useEffect(() => {
-        void loadNotifications();
-    }, [loadNotifications]);
-
-    const handleMarkAllRead = async () => {
-        await markAllNotificationsRead();
-        await loadNotifications();
+    const handleMarkAllRead = () => {
+        markAllRead.mutate(undefined, {
+            onError: (error) => {
+                console.error("Failed to mark notifications as read", error);
+            },
+        });
     };
 
     return (
@@ -362,15 +367,21 @@ function NotificationPanel() {
                             <p className="text-xs text-muted-foreground">Security and content activity events from your admin actions.</p>
                         </div>
                         <div className="flex items-center gap-2">
-                            <Button type="button" variant="outline" size="sm" disabled={isLoading} onClick={() => void loadNotifications()}>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={isLoading}
+                                onClick={() => void notificationsQuery.refetch()}
+                            >
                                 Refresh
                             </Button>
                             <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                disabled={isLoading || unreadCount === 0}
-                                onClick={() => void handleMarkAllRead()}
+                                disabled={isLoading || unreadCount === 0 || markAllRead.isPending}
+                                onClick={handleMarkAllRead}
                             >
                                 Mark all read {unreadCount > 0 ? `(${unreadCount})` : ""}
                             </Button>
@@ -430,11 +441,15 @@ function SettingsPageContent() {
 
     const [activeTab, setActiveTab] = useState<SettingsTab>(tabParam || "profile");
     const [prevTabParam, setPrevTabParam] = useState<SettingsTab | null>(tabParam);
-    
+
     const [user, setUser] = useState<UserProfile | null>(() => {
         if (typeof window !== "undefined") {
-            const stored = localStorage.getItem("user");
-            if (stored) return JSON.parse(stored) as UserProfile;
+            try {
+                const stored = localStorage.getItem("user");
+                if (stored) return JSON.parse(stored) as UserProfile;
+            } catch {
+                return null;
+            }
         }
         return null;
     });

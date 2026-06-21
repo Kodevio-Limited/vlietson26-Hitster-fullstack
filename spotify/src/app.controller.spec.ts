@@ -14,9 +14,18 @@ describe('AppController', () => {
     appController = app.get<AppController>(AppController);
   });
 
-  describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+  describe('getApiInfo', () => {
+    it('should return API metadata', () => {
+      const info = appController.getApiInfo();
+      expect(info).toEqual(
+        expect.objectContaining({
+          name: expect.any(String),
+          endpoints: expect.objectContaining({
+            api: expect.any(String),
+            health: expect.any(String),
+          }),
+        }),
+      );
     });
   });
 });

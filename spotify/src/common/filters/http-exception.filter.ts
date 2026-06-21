@@ -46,12 +46,27 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message: clientMessage,
     };
 
-    // Log the full server-side error including stack for ops, but never
-    // include it in the response body.
-    this.logger.error(
-      `${request.method} ${request.url} - Status: ${status} - ${JSON.stringify(errorResponse)}`,
-      exception instanceof Error ? exception.stack : '',
-    );
+    // Severity policy:
+    //   - 5xx → error with stack trace (real operational issue)
+    //   - 4xx → warn, no stack (expected client problem; not actionable
+    //     for ops). 401 stays at warn (security monitors will still see it).
+    //   - Anything else → error (treat unknown as worst case).
+    const is5xx = status >= 500;
+    const logLine = `${request.method} ${request.url} - Status: ${status} - ${JSON.stringify(errorResponse)}`;
+
+    if (is5xx) {
+      this.logger.error(
+        logLine,
+        exception instanceof Error ? exception.stack : '',
+      );
+    } else if (status >= 400) {
+      this.logger.warn(logLine);
+    } else {
+      this.logger.error(
+        logLine,
+        exception instanceof Error ? exception.stack : '',
+      );
+    }
 
     response.status(status).json(errorResponse);
   }
