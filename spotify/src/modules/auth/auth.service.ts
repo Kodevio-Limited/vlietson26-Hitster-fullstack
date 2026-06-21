@@ -36,6 +36,38 @@ export class AuthService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
+  /**
+   * Build the JWT payload for `user`. Centralized so every sign site
+   * (`login`, `register`, `spotifyLogin`) embeds the same claims,
+   * including `tokenVersion` — the revocation handle checked by
+   * `JwtStrategy.validate`. A password change bumps the column and
+   * any previously-minted token fails the check on its next request.
+   */
+  private buildJwtPayload(user: User): {
+    sub: string;
+    email: string;
+    role: string;
+    spotifyId: string | null;
+    tokenVersion: number;
+  } {
+    return {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      spotifyId: user.spotifyId ?? null,
+      tokenVersion: user.tokenVersion,
+    };
+  }
+
+  /** Increment the user's `tokenVersion`. Invalidates every existing JWT. */
+  private async bumpTokenVersion(user: User): Promise<void> {
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    await this.userRepository.save(user);
+    this.logger.log(
+      `Bumped tokenVersion to ${user.tokenVersion} for user ${user.id}`,
+    );
+  }
+
   getSpotifyAuthUrl(): string {
     const clientId = this.configService.get('spotify.clientId');
     const redirectUri = this.configService.get('spotify.redirectUri');
@@ -99,12 +131,7 @@ export class AuthService {
     await this.userRepository.save(user);
 
     // Generate JWT token
-    const jwtToken = this.jwtService.sign({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      spotifyId: user.spotifyId,
-    });
+    const jwtToken = this.jwtService.sign(this.buildJwtPayload(user));
 
     // Return JWT and user info (excluding sensitive tokens)
     const { spotifyAccessToken, spotifyRefreshToken, ...safeUser } = user;
@@ -230,12 +257,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const jwtToken = this.jwtService.sign({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      spotifyId: user.spotifyId,
-    });
+    const jwtToken = this.jwtService.sign(this.buildJwtPayload(user));
 
     const { password, spotifyAccessToken, spotifyRefreshToken, ...safeUser } =
       user;
@@ -269,12 +291,7 @@ export class AuthService {
 
     await this.userRepository.save(user);
 
-    const jwtToken = this.jwtService.sign({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      spotifyId: user.spotifyId,
-    });
+    const jwtToken = this.jwtService.sign(this.buildJwtPayload(user));
 
     const { password, spotifyAccessToken, spotifyRefreshToken, ...safeUser } =
       user;
@@ -351,7 +368,9 @@ export class AuthService {
     user.password = hashedPassword;
     user.resetToken = null;
     user.resetTokenExpiresAt = null;
-    await this.userRepository.save(user);
+    // Bump invalidates every JWT currently in flight for this user
+    // (including any captured before the reset).
+    await this.bumpTokenVersion(user);
 
     return { message: 'Password has been reset successfully.' };
   }
@@ -397,7 +416,12 @@ export class AuthService {
       }
 
       user.password = await bcrypt.hash(changePasswordDto.newPassword, 10);
-      await this.userRepository.save(user);
+      // Bumping `tokenVersion` revokes any other active session for
+      // this user (other browsers, the mobile client, etc.) — they
+      // re-login on next request and get a fresh token with the new
+      // version. Without this, a stolen JWT remains valid until it
+      // naturally expires, which on a 7d JWT_EXPIRES_IN is too long.
+      await this.bumpTokenVersion(user);
 
       try {
         await this.notificationsService.create({

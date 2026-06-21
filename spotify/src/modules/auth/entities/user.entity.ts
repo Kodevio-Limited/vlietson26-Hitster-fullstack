@@ -66,6 +66,22 @@ export class User {
   @Column({ type: 'varchar', length: 50, default: 'user' })
   role: string;
 
+  /**
+   * Monotonic counter bumped by `resetPassword` and `changePassword`.
+   * The JWT is signed with the current value and `JwtStrategy.validate`
+   * refuses any token whose `tokenVersion` doesn't match the user's
+   * latest — that's how a password change invalidates other sessions
+   * (stolen laptop, leaked token) without waiting for JWT_EXPIRES_IN.
+   *
+   * Default 0 means every user created before this column existed
+   * gets tokenVersion=0 on the next synchronize, and legacy JWTs
+   * (no `tokenVersion` claim) compare equal because the strategy
+   * defaults a missing claim to 0. After the first resetPassword
+   * bumps them to 1, all legacy tokens are invalid in one stroke.
+   */
+  @Column({ type: 'integer', default: 0, name: 'token_version' })
+  tokenVersion: number;
+
   @Column({ type: 'text', nullable: true, name: 'spotify_access_token' })
   spotifyAccessToken: string;
 

@@ -254,18 +254,29 @@ export class SongsService {
       sortOrder = 'DESC',
     } = searchDto;
     const safeLimit = Math.min(limit, 100);
-    const where: FindOptionsWhere<Song> = {};
 
-    if (q) {
-      where.name = Like(`%${q}%`);
-    }
-
-    const [items, total] = await this.songRepository.findAndCount({
-      where,
-      order: { [sortBy]: sortOrder },
-      skip: (page - 1) * safeLimit,
-      take: safeLimit,
-    });
+    // Cache COUNT and the page separately. The previous code used
+    // TypeORM's `findAndCount`, which runs a fresh `SELECT COUNT(*)`
+    // on every request — a sequential scan that scales with row count.
+    // With pagination across pages 1..N, the COUNT result is identical
+    // for every page (same WHERE); caching it once at 5min TTL means
+    // only the SELECT runs per page change, not the COUNT.
+    //
+    // Invalidation: `create/update/remove/importSong` already call
+    // `cacheService.invalidatePattern('songs:*')`, which clears both
+    // the count and list buckets (and the existing recent/popular
+    // buckets) under one prefix. No new invalidation sites needed.
+    //
+    // Caveat: cache is per-pod. Multi-pod deployments need a shared
+    // cache (deferred — see CLAUDE.md).
+    const total = await this.getCachedSongCount(q);
+    const items = await this.getCachedSongPage(
+      q,
+      page,
+      safeLimit,
+      sortBy,
+      sortOrder,
+    );
 
     return {
       items,
@@ -274,6 +285,60 @@ export class SongsService {
       limit: safeLimit,
       totalPages: Math.ceil(total / safeLimit),
     };
+  }
+
+  private buildSongWhere(q: string | undefined): FindOptionsWhere<Song> {
+    return q ? { name: Like(`%${q}%`) } : {};
+  }
+
+  /**
+   * 5-min cached COUNT for a given query string. Without `q` we cache
+   * the unfiltered total separately so `?q=` and the empty case don't
+   * share a key. TTL matches `getRecentSongs`/`getPopularSongs`.
+   */
+  private async getCachedSongCount(q: string | undefined): Promise<number> {
+    const cacheKey = q ? `songs:count:q=${q}` : 'songs:count:all';
+    return this.cacheService.getOrSet(
+      cacheKey,
+      () => this.songRepository.count({ where: this.buildSongWhere(q) }),
+      300,
+    );
+  }
+
+  /**
+   * 30-second cached page. Shorter than the COUNT cache because users
+   * expect search results to feel fresh within a session. The slim
+   * `select` drops fields the frontend's `SongDto` doesn't use
+   * (spotifyUrl, albumImageUrl, previewUrl, plays, updatedAt, mappings)
+   * — small absolute savings, but compounds across many pages.
+   */
+  private async getCachedSongPage(
+    q: string | undefined,
+    page: number,
+    limit: number,
+    sortBy: string,
+    sortOrder: 'ASC' | 'DESC',
+  ): Promise<Song[]> {
+    const cacheKey = `songs:list:${JSON.stringify({ q, page, limit, sortBy, sortOrder })}`;
+    return this.cacheService.getOrSet(
+      cacheKey,
+      () =>
+        this.songRepository.find({
+          where: this.buildSongWhere(q),
+          order: { [sortBy]: sortOrder },
+          skip: (page - 1) * limit,
+          take: limit,
+          select: {
+            id: true,
+            name: true,
+            artist: true,
+            releaseYear: true,
+            spotifyTrackId: true,
+            createdAt: true,
+          },
+        }),
+      30,
+    );
   }
 
   async findOne(id: string): Promise<Song> {

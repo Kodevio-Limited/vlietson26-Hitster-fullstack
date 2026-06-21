@@ -10,6 +10,7 @@ import { User } from './entities/user.entity';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { Global } from '@nestjs/common';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { JWT_ALGORITHMS, JWT_AUDIENCE, JWT_ISSUER } from './constants';
 
 @Global()
 @Module({
@@ -21,6 +22,9 @@ import { NotificationsModule } from '../notifications/notifications.module';
         secret: configService.get('jwt.secret'),
         signOptions: {
           expiresIn: configService.get('jwt.expiresIn'),
+          algorithm: JWT_ALGORITHMS[0],
+          issuer: JWT_ISSUER,
+          audience: JWT_AUDIENCE,
         },
       }),
       inject: [ConfigService],
