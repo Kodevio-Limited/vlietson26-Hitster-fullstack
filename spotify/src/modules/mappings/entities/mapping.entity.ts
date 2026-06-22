@@ -19,6 +19,27 @@ import { User } from '../../auth/entities/user.entity';
 @Index(['isActive'])
 @Index(['createdAt'])
 @Index(['createdById'])
+// Partial unique index: at most one *active* mapping per QR code.
+//
+// Two complementary invariants are enforced here:
+//   1. `@Index(['songId', 'qrCodeId'], { unique: true })` above blocks
+//      the same (song, qr) pair from being mapped twice, ever.
+//   2. This index blocks two *active* mappings on the same QR
+//      regardless of song. The QR-scan hot path in
+//      `getActiveMappingByQrCodeId` filters `isActive = true` on every
+//      call, so the partial index turns the lookup into a single
+//      index probe instead of a seqscan over the (songId, qrCodeId)
+//      composite followed by a per-row filter.
+//
+// The `where` clause is raw SQL passed through to `CREATE INDEX`. The
+// column name is `is_active` (the DB name from `@Column({ name: ... })`),
+// not the entity field `isActive` — TypeORM does not translate the
+// predicate, only the indexed columns.
+//
+// Migration: TypeORM's `synchronize: true` (dev) auto-creates this on
+// next boot. Prod needs a real migration — see CLAUDE.md "Pre-existing
+// backend lint debt / no migrations folder" note.
+@Index(['qrCodeId'], { unique: true, where: '"is_active" = TRUE' })
 export class Mapping {
   @PrimaryGeneratedColumn('uuid')
   id: string;

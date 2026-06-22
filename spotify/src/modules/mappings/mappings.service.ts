@@ -14,6 +14,7 @@ import { SongsService } from '../songs/songs.service';
 import { QrCodesService } from '../qr-codes/qr-codes.service';
 import { QrCardsService } from '../qr-cards/qr-cards.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { CacheService } from '../../common/services/cache.service';
 
 @Injectable()
 export class MappingsService {
@@ -27,6 +28,7 @@ export class MappingsService {
     private readonly qrCodesService: QrCodesService,
     private readonly qrCardsService: QrCardsService,
     private readonly notificationsService: NotificationsService,
+    private readonly cacheService: CacheService,
   ) {}
 
   async create(
@@ -73,6 +75,7 @@ export class MappingsService {
       });
 
       const savedMapping = await this.mappingRepository.save(mapping);
+      this.cacheService.invalidatePattern('mappings:*');
 
       await this.notificationsService.create({
         type: 'mapping_created',
@@ -127,6 +130,7 @@ export class MappingsService {
     }
 
     const updated = await this.mappingRepository.save(mapping);
+    this.cacheService.invalidatePattern('mappings:*');
     this.logger.log(`Mapping updated: ${id}`);
 
     return this.findOne(updated.id);
@@ -137,15 +141,86 @@ export class MappingsService {
     limit = 10,
   ): Promise<{ items: Mapping[]; total: number }> {
     const safeLimit = Math.min(limit, 100);
-    const skip = (page - 1) * safeLimit;
-    const [items, total] = await this.mappingRepository.findAndCount({
-      // Drop `createdBy` (loads the full user row including password hash).
-      relations: ['song', 'qrCode'],
-      order: { createdAt: 'DESC' },
-      skip,
-      take: safeLimit,
-    });
+
+    // Cache COUNT and the page separately. The previous code used
+    // TypeORM's `findAndCount`, which runs a fresh `SELECT COUNT(*)`
+    // on every request — a sequential scan that scales with row count.
+    // With pagination across pages 1..N, the COUNT result is identical
+    // for every page; caching it once at 5min TTL means only the
+    // SELECT runs per page change, not the COUNT.
+    //
+    // Invalidation: `create/update/deactivate/remove` call
+    // `cacheService.invalidatePattern('mappings:*')`, which clears
+    // both the count and list buckets in one call.
+    //
+    // Caveat: cache is per-pod. Multi-pod deployments need a shared
+    // cache (deferred — see CLAUDE.md).
+    const total = await this.getCachedMappingCount();
+    const items = await this.getCachedMappingPage(page, safeLimit);
     return { items, total };
+  }
+
+  /**
+   * 5-min cached COUNT of all mappings. The dashboard and qr-mapping
+   * page both call `findAll()` on every load; with `findAndCount` each
+   * call issued a `SELECT COUNT(*)` on a non-indexed `mappings` table
+   * — the dominant chunk of the request latency against the remote
+   * Neon database.
+   */
+  private async getCachedMappingCount(): Promise<number> {
+    return this.cacheService.getOrSet(
+      'mappings:count:all',
+      () => this.mappingRepository.count(),
+      300,
+    );
+  }
+
+  /**
+   * 30-second cached page. Shorter than the COUNT cache because
+   * mappers expect newly-created/removed mappings to appear quickly.
+   * Slim `select`: only the columns the dashboard's `MappingDto` shape
+   * (lib/api/admin-dashboard.ts) actually reads. Drops `createdById`
+   * (the original code already dropped the `createdBy` relation to
+   * avoid loading password hashes) and `qrCardId`. The relations load
+   * the slim song and slim qrCode — the qrCode is intentionally
+   * without `imageUrl` because the column is `select: false` and the
+   * dashboard mapping list doesn't display it.
+   */
+  private async getCachedMappingPage(
+    page: number,
+    limit: number,
+  ): Promise<Mapping[]> {
+    const cacheKey = `mappings:list:${JSON.stringify({ page, limit })}`;
+    return this.cacheService.getOrSet(
+      cacheKey,
+      () =>
+        this.mappingRepository.find({
+          relations: ['song', 'qrCode'],
+          order: { createdAt: 'DESC' },
+          skip: (page - 1) * limit,
+          take: limit,
+          select: {
+            id: true,
+            songId: true,
+            qrCodeId: true,
+            qrCardId: true,
+            isActive: true,
+            createdAt: true,
+            song: {
+              id: true,
+              name: true,
+              artist: true,
+            },
+            qrCode: {
+              id: true,
+              identifier: true,
+              isActive: true,
+              redirectUrl: true,
+            },
+          },
+        }),
+      30,
+    );
   }
 
   async findOne(id: string): Promise<Mapping> {
@@ -179,6 +254,7 @@ export class MappingsService {
     const mapping = await this.findOne(id);
     mapping.isActive = false;
     const updated = await this.mappingRepository.save(mapping);
+    this.cacheService.invalidatePattern('mappings:*');
     this.logger.log(`Mapping deactivated: ${id}`);
     return updated;
   }
@@ -188,6 +264,7 @@ export class MappingsService {
     const mappingSongName = mapping.song?.name ?? mapping.songId;
     const mappingQrIdentifier = mapping.qrCode?.identifier ?? mapping.qrCodeId;
     await this.mappingRepository.remove(mapping);
+    this.cacheService.invalidatePattern('mappings:*');
     await this.notificationsService.create({
       type: 'mapping_deleted',
       category: 'content',

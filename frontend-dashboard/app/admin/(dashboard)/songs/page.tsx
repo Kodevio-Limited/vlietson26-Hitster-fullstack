@@ -112,9 +112,29 @@ function SongsPageContent() {
     );
 
     const handleSearchChange = (value: string) => {
+        // Local state updates immediately so the input stays responsive.
+        // The URL write is debounced below so each keystroke doesn't
+        // trigger a fresh fetch (and a new `router.replace` call) on
+        // every character — typing 10 chars in 1s used to issue 10
+        // queries and 10 history pushes; now it issues 1 of each.
         setSearchInput(value);
-        setUrlParams({ q: value, page: null });
     };
+
+    // Debounce the URL write for `q`. The effect re-runs on every
+    // `searchInput` change, but each new keystroke cancels the prior
+    // pending timer (cleanup runs first), so only the final value
+    // makes it into the URL after 300ms of quiet. Bail when the local
+    // state matches the URL — that covers (a) the initial mount sync
+    // and (b) cases where the URL was updated by another flow (sort
+    // change, browser back/forward) and the local state has already
+    // been re-synced by the effect above.
+    useEffect(() => {
+        if (searchInput === q) return;
+        const timer = setTimeout(() => {
+            setUrlParams({ q: searchInput, page: null });
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchInput, q, setUrlParams]);
 
     // The single query that drives the table. The query key includes
     // every URL-derived input, so navigating or pasting a URL with new
@@ -142,12 +162,17 @@ function SongsPageContent() {
     );
 
     const totalPages = songsQuery.data?.totalPages ?? 1;
-    // Show the SkeletonTable during any fetch — both the initial load
-    // (`isPending`, no data yet) and page/sort/search changes
-    // (`isFetching` with existing data). The DataTable's own internal
-    // "Loading data..." row is no longer used; we prefer the full-page
-    // skeleton so the loading experience is consistent.
-    const isLoading = songsQuery.isPending || songsQuery.isFetching;
+    // Loading-state split:
+    // - `isInitialLoad` (no data yet) → show the full SkeletonTable.
+    // - `isRefetching` (background fetch with stale data on screen) →
+    //   keep the previous data visible (placeholderData: keepPreviousData
+    //   in the global QueryClient keeps `songsQuery.data` populated) and
+    //   use the DataTable's in-table "Loading data..." row so the user
+    //   gets feedback without losing their place. The previous code
+    //   collapsed both into one `isLoading` flag, so every page change
+    //   flashed a full skeleton for the duration of the fetch.
+    const isInitialLoad = songsQuery.isPending;
+    const isRefetching = songsQuery.isFetching && !songsQuery.isPending;
 
     // Surface backend failures. Without this, a 500 on /api/songs
     // renders an empty table with totalPages=1, and the admin can't
@@ -476,7 +501,11 @@ function SongsPageContent() {
                 ) : (
                     <>
                         <div className="space-y-3 md:hidden">
-                            {isLoading ? <SkeletonTable /> : null}
+                            {isInitialLoad ? <SkeletonTable /> : null}
+                            {/* `songs` reads from the previous page's data
+                                while the next page is fetching, so the list
+                                stays visible. A subtle spinner in the corner
+                                gives feedback for the in-flight refetch. */}
                             {songs.map((song) => (
                                 <article key={`mobile-${song.id}`} className="rounded-lg border border-border bg-card p-4 shadow-sm">
                                     <div className="space-y-1">
@@ -504,10 +533,16 @@ function SongsPageContent() {
                                     </div>
                                 </article>
                             ))}
+                            {isRefetching ? (
+                                <div className="flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground">
+                                    <Loader2 className="size-4 animate-spin" data-icon="inline-start" />
+                                    Loading next page…
+                                </div>
+                            ) : null}
                         </div>
 
                         <div className="hidden md:block">
-                            {isLoading ? (
+                            {isInitialLoad ? (
                                 <SkeletonTable />
                             ) : (
                                 <DataTable
@@ -520,6 +555,7 @@ function SongsPageContent() {
                                     }}
                                     sorting={sorting}
                                     onSortingChange={handleSortingChange}
+                                    isLoading={isRefetching}
                                 />
                             )}
                         </div>
