@@ -3,6 +3,22 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 
+export interface SpotifyTrackInfo {
+  id: string;
+  name: string;
+  artist: string;
+  artists: { id: string; name: string }[];
+  album: any;
+  albumId: string;
+  albumImage: string;
+  previewUrl: string;
+  spotifyUrl: string;
+  duration: number;
+  durationFormatted: string;
+  popularity: number;
+  explicit: boolean;
+}
+
 @Injectable()
 export class SpotifyService {
   private accessToken: string;
@@ -51,7 +67,7 @@ export class SpotifyService {
     }
   }
 
-  async searchTracks(query: string, limit: number = 10): Promise<any[]> {
+  async searchTracks(query: string, limit: number = 10): Promise<SpotifyTrackInfo[]> {
     const token = await this.getAccessToken();
 
     try {
@@ -94,7 +110,7 @@ export class SpotifyService {
     }
   }
 
-  async getTrackById(trackId: string): Promise<any> {
+  async getTrackById(trackId: string): Promise<SpotifyTrackInfo> {
     const token = await this.getAccessToken();
 
     try {

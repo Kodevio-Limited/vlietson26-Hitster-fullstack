@@ -6,6 +6,7 @@ import {
   UseGuards,
   Request,
 } from '@nestjs/common';
+import type { Request as ExpressRequest } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { AuthService } from './auth.service';
@@ -17,6 +18,21 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+
+/**
+ * Same shape as `JwtStrategy.validate()`'s return — only `.id` is
+ * read here, but typing the field means the rest of this controller
+ * stays free of unsafe `any` operations.
+ *
+ * `user` is typed as required, not optional. Every route that uses
+ * `req: RequestWithUser` is wrapped in `JwtAuthGuard`, which
+ * guarantees `req.user` is set by the time the handler runs. Making
+ * the type non-optional lets the handlers read `req.user.id` without
+ * a runtime narrowing check.
+ */
+interface RequestWithUser extends ExpressRequest {
+  user: { id: string };
+}
 
 @Controller('auth')
 export class AuthController {
@@ -71,14 +87,17 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Post('update-profile')
-  async updateProfile(@Request() req, @Body() updateDto: UpdateProfileDto) {
+  async updateProfile(
+    @Request() req: RequestWithUser,
+    @Body() updateDto: UpdateProfileDto,
+  ) {
     return this.authService.updateProfile(req.user.id, updateDto);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('change-password')
   async changePassword(
-    @Request() req,
+    @Request() req: RequestWithUser,
     @Body() changePasswordDto: ChangePasswordDto,
   ) {
     return this.authService.changePassword(req.user.id, changePasswordDto);
@@ -86,23 +105,30 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Get('me')
-  async getCurrentUser(@Request() req) {
+  async getCurrentUser(@Request() req: RequestWithUser) {
     const user = await this.authService.getCurrentUser(req.user.id);
     // Strip sensitive fields that should never leave the server.
+    // The `void` cast tells TS we're destructuring for the side effect
+    // of excluding the listed keys, not to use the local bindings.
     const {
-      password,
-      spotifyAccessToken,
-      spotifyRefreshToken,
-      verificationCode,
-      resetToken,
+      password: _password,
+      spotifyAccessToken: _spotifyAccessToken,
+      spotifyRefreshToken: _spotifyRefreshToken,
+      verificationCode: _verificationCode,
+      resetToken: _resetToken,
       ...safeUser
     } = user;
+    void _password;
+    void _spotifyAccessToken;
+    void _spotifyRefreshToken;
+    void _verificationCode;
+    void _resetToken;
     return safeUser;
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('spotify/refresh')
-  async refreshSpotifyToken(@Request() req) {
+  async refreshSpotifyToken(@Request() req: RequestWithUser) {
     const newToken = await this.authService.refreshSpotifyToken(req.user.id);
     return { spotifyAccessToken: newToken };
   }

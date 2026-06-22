@@ -24,6 +24,19 @@ interface CachedUser {
   expiresAt: number;
 }
 
+/**
+ * The JWT payload shape we sign in `AuthService.buildJwtPayload`.
+ * `tokenVersion` is optional so we can keep the legacy-token branch
+ * (default-to-0) until every active user has re-logged in once.
+ */
+interface JwtPayload {
+  sub: string;
+  email: string;
+  role: string;
+  spotifyId: string | null;
+  tokenVersion?: number;
+}
+
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   /**
@@ -70,9 +83,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: any) {
-    const claimVersion =
-      typeof payload.tokenVersion === 'number' ? payload.tokenVersion : 0;
+  async validate(payload: JwtPayload) {
+    const claimVersion = payload.tokenVersion ?? 0;
     const cacheKey = `${payload.sub}:${claimVersion}`;
     const now = Date.now();
 
@@ -116,9 +128,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // the cap is a memory safety net, not a hot-path concern. We don't
     // try to evict expired entries eagerly — TTL is checked on read.
     if (this.userCache.size >= JwtStrategy.CACHE_MAX_ENTRIES) {
-      const firstKey = this.userCache.keys().next().value;
-      if (firstKey !== undefined) {
-        this.userCache.delete(firstKey);
+      // `Map.keys().next()` returns `IteratorResult<string, undefined>`
+      // but the inline `.value` chain trips the unsafe-assignment rule
+      // on some TS/ESLint combinations. Capture the iterator result
+      // and narrow on `done` instead.
+      const head = this.userCache.keys().next();
+      if (!head.done) {
+        this.userCache.delete(head.value);
       }
     }
     this.userCache.set(cacheKey, {

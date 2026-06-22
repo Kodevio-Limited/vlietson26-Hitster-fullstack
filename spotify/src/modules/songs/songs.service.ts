@@ -12,10 +12,11 @@ import { Song } from './entities/song.entity';
 import { CreateSongDto } from './dto/create-song.dto';
 import { UpdateSongDto } from './dto/update-song.dto';
 import { SearchSongDto } from './dto/search-song.dto';
-import { SpotifyService } from '../spotify/spotify.service';
+import { SpotifyService, SpotifyTrackInfo } from '../spotify/spotify.service';
 import { CacheService } from '../../common/services/cache.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { QrCodesService } from '../qr-codes/qr-codes.service';
+import { QrCode } from '../qr-codes/entities/qr-code.entity';
 import { MappingsService } from '../mappings/mappings.service';
 import { randomUUID } from 'crypto';
 
@@ -47,7 +48,7 @@ export class SongsService {
     }
 
     // Fetch additional track info from Spotify
-    let spotifyInfo: any = null;
+    let spotifyInfo: SpotifyTrackInfo | null = null;
     try {
       spotifyInfo = await this.spotifyService.getTrackById(
         createSongDto.spotifyTrackId,
@@ -55,8 +56,9 @@ export class SongsService {
       this.logger.log(
         `Fetched Spotify info for track: ${createSongDto.spotifyTrackId}`,
       );
-    } catch (error) {
-      this.logger.warn(`Could not fetch Spotify info: ${error.message}`);
+    } catch (error: unknown) {
+      this.logger.warn(`Could 
+        not fetch Spotify info: ${(error as Error).message}`);
     }
 
     const song = this.songRepository.create({
@@ -110,33 +112,37 @@ export class SongsService {
     }
 
     // Fetch track info from Spotify
-    let spotifyInfo: any = null;
+    let spotifyInfo: SpotifyTrackInfo | null = null;
     try {
       spotifyInfo = await this.spotifyService.getTrackById(trackId);
-    } catch (error) {
+    } catch (error: unknown) {
       throw new ConflictException(
-        `Could not fetch info from Spotify: ${error.message}`,
+        `Could not fetch info from Spotify: ${(error as Error).message}`,
       );
     }
 
     let releaseYear = new Date().getFullYear();
-    if (spotifyInfo.album && spotifyInfo.album.release_date) {
-      const yearMatch = spotifyInfo.album.release_date.match(/^(\d{4})/);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    if (spotifyInfo?.album && spotifyInfo.album.release_date) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const yearMatch = String(spotifyInfo.album.release_date).match(
+        /^(\d{4})/,
+      );
       if (yearMatch) {
         releaseYear = parseInt(yearMatch[1], 10);
       }
-    } else if (spotifyInfo.albumId) {
+    } else if (spotifyInfo?.albumId) {
       releaseYear = new Date().getFullYear(); // Fallback if no album release date is given by simple track fetch
     }
 
     song = this.songRepository.create({
-      name: spotifyInfo.name,
-      artist: spotifyInfo.artist,
+      name: spotifyInfo?.name,
+      artist: spotifyInfo?.artist,
       releaseYear: releaseYear,
       spotifyTrackId: trackId,
-      spotifyUrl: spotifyInfo.spotifyUrl,
-      albumImageUrl: spotifyInfo.albumImage,
-      previewUrl: spotifyInfo.previewUrl,
+      spotifyUrl: spotifyInfo?.spotifyUrl,
+      albumImageUrl: spotifyInfo?.albumImage,
+      previewUrl: spotifyInfo?.previewUrl,
       plays: 0,
     });
 
@@ -144,9 +150,9 @@ export class SongsService {
 
     // Generate QR Code
     const identifier = randomUUID().replace(/-/g, '').substring(0, 10);
-    const qrCode = await this.qrCodesService.generateQrCode({
+    const newQrCode = await this.qrCodesService.generateQrCode({
       identifier,
-      spotifyUrl: spotifyInfo.spotifyUrl,
+      spotifyUrl: spotifyInfo?.spotifyUrl || '',
       spotifyTrackId: trackId,
     });
 
@@ -154,7 +160,7 @@ export class SongsService {
     await this.mappingsService.create(
       {
         songId: savedSong.id,
-        qrCodeId: qrCode.id,
+        qrCodeId: newQrCode.id,
       },
       userId,
     );
@@ -184,17 +190,18 @@ export class SongsService {
       try {
         await this.importSong(url.trim(), userId);
         successful++;
-      } catch (error) {
+      } catch (error: unknown) {
         failed++;
-        errors.push(`Failed to import ${url}: ${error.message}`);
-        this.logger.warn(`Bulk import failed for URL ${url}: ${error.message}`);
+        const errorMessage = (error as Error).message;
+        errors.push(`Failed to import ${url}: ${errorMessage}`);
+        this.logger.warn(`Bulk import failed for URL ${url}: ${errorMessage}`);
       }
     }
 
     return { successful, failed, errors };
   }
 
-  async regenerateQrCode(songId: string, userId: string): Promise<any> {
+  async regenerateQrCode(songId: string, userId: string): Promise<QrCode> {
     const song = await this.findOne(songId);
 
     // Find existing active mapping
@@ -217,20 +224,10 @@ export class SongsService {
         `https://open.spotify.com/track/${song.spotifyTrackId}`,
       spotifyTrackId: song.spotifyTrackId,
     });
-
-    // Create new Mapping
-    await this.mappingsService.create(
-      {
-        songId: song.id,
-        qrCodeId: newQrCode.id,
-      },
-      userId,
-    );
-
     return newQrCode;
   }
 
-  async getSongQrCode(songId: string): Promise<any> {
+  async getSongQrCode(songId: string): Promise<QrCode> {
     const song = await this.findOne(songId);
     const mapping = song.mappings?.find((m) => m.isActive);
     if (!mapping || !mapping.qrCode) {
@@ -363,14 +360,13 @@ export class SongsService {
       updateSongDto.spotifyTrackId !== song.spotifyTrackId
     ) {
       try {
-        const spotifyInfo = await this.spotifyService.getTrackById(
-          updateSongDto.spotifyTrackId,
-        );
+        const spotifyInfo: SpotifyTrackInfo | null =
+          await this.spotifyService.getTrackById(updateSongDto.spotifyTrackId);
         song.spotifyUrl = spotifyInfo?.spotifyUrl;
         song.albumImageUrl = spotifyInfo?.albumImage;
         song.previewUrl = spotifyInfo?.previewUrl;
         this.logger.log(`Updated Spotify info for song: ${song.name}`);
-      } catch (error) {
+      } catch (error: any) {
         this.logger.warn(`Could not fetch Spotify info: ${error.message}`);
       }
     }

@@ -7,6 +7,7 @@ import { SongsModule } from '../songs/songs.module';
 import { QrCodesModule } from '../qr-codes/qr-codes.module';
 import { QrCardsModule } from '../qr-cards/qr-cards.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { CacheService } from '../../common/services/cache.service';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     NotificationsModule,
   ],
   controllers: [MappingsController],
-  providers: [MappingsService],
+  providers: [MappingsService, CacheService],
   exports: [MappingsService],
 })
 export class MappingsModule {}

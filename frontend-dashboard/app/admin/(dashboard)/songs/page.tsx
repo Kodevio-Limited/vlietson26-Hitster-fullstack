@@ -13,7 +13,7 @@ import {
 } from "@/lib/mutations/songs";
 import { songQueries } from "@/lib/queries/songs";
 import { exportSongsCsv } from "@/lib/api/admin-dashboard";
-import { ChevronDown, Download, Loader2, Plus, Search, Upload } from "lucide-react";
+import { ChevronDown, Download, FileDown, Loader2, Plus, Search, Upload } from "lucide-react";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef, SortingState } from "@tanstack/react-table";
@@ -263,6 +263,37 @@ function SongsPageContent() {
         }
     };
 
+    /**
+     * Download a starter CSV the user can fill in with Spotify track
+     * URLs. Mirrors the `handleDownloadQr` pattern: build a Blob,
+     * create a one-shot `<a download>`, click it, revoke the object
+     * URL. No backend round-trip — the template is a fixed string.
+     *
+     * The parser in `handleFileUpload` (above) only matches lines
+     * against the Spotify URL regex, so the `spotify_url` header
+     * row is documentation only — it won't be picked up as a track.
+     * The two example rows give the user something to delete /
+     * replace rather than starting from an empty file.
+     */
+    const handleDownloadTemplate = () => {
+        const csvContent = [
+            "spotify_url",
+            "https://open.spotify.com/track/4iV5W9uYEdYUVa79Axb7Rh",
+            "https://open.spotify.com/track/1mea3bSkSGXuIRvnydlB5b",
+            "https://open.spotify.com/track/6rqhFgbbKwnb9MLmUQDhG6",
+        ].join("\n");
+
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "songs_import_template.csv";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        toast.success("Template downloaded — replace the example URLs and re-upload.");
+    };
     const handleAddSong = async (payload: { spotifyUrl: string }) => {
         // The AddSongDialog awaits this and surfaces server errors in
         // its own onError path. We use `mutateAsync` so the dialog's
@@ -426,7 +457,7 @@ function SongsPageContent() {
                         <p className="dashboard-page-subtitle">Manage your game contents and system configuration.</p>
                     </div>
 
-                    <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:pl-8">
+                    <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                         <div className="relative w-full lg:w-96 xl:w-116">
                             <Input
                                 type="search"
@@ -458,6 +489,14 @@ function SongsPageContent() {
                             <Button
                                 variant="outline"
                                 className="h-11.5 rounded-[5px] px-3 text-[16px] font-medium"
+                                onClick={() => handleDownloadTemplate()}
+                            >
+                                <FileDown className="mr-2 size-4" />
+                                Download Template
+                            </Button>
+                            <Button
+                                variant="outline"
+                                className="h-11.5 rounded-[5px] px-3 text-[16px] font-medium"
                                 onClick={() => void handleExportCsv()}
                             >
                                 <Download className="mr-2 size-4" />
@@ -470,7 +509,7 @@ function SongsPageContent() {
                                     onClick={() => setIsAddDialogOpen(true)}
                                 >
                                     <Plus className="size-6" />
-                                    Add New Song
+                                    New Song
                                 </Button>
                             </DialogTrigger>
                         </div>

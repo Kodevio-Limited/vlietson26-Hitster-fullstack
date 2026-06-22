@@ -15,6 +15,21 @@ import { SongsService } from '../songs/songs.service';
 
 const IDENTIFIER_RE = /^[a-zA-Z0-9_-]{1,50}$/;
 
+/**
+ * The slim song projection we hand to the mobile client. Mirrors
+ * `getActiveMappingByQrCodeId`'s `select.song` exactly so the
+ * response shape is the source of truth.
+ */
+interface SongInfo {
+  id: string;
+  name: string;
+  artist: string;
+  releaseYear: number;
+  spotifyTrackId: string;
+  albumImageUrl: string | null;
+  previewUrl: string | null;
+}
+
 @Controller('qr')
 export class QrRedirectController {
   private readonly logger = new Logger(QrRedirectController.name);
@@ -71,9 +86,8 @@ export class QrRedirectController {
       // the increment would still bump the counter; if the QR was
       // deactivated in the gap, the UPDATE affects 0 rows and we report
       // 410 GONE.
-      const affected = await this.qrCodesService.incrementScansIfActive(
-        identifier,
-      );
+      const affected =
+        await this.qrCodesService.incrementScansIfActive(identifier);
       if (affected === 0) {
         return res.status(HttpStatus.GONE).json({
           success: false,
@@ -85,10 +99,11 @@ export class QrRedirectController {
       // Slim active-mapping lookup keyed on qrCode.id. Skips the heavy
       // `findByIdentifier` re-fetch and uses a slim `select` so only the
       // 7 song columns the response projects come back from disk.
-      const mapping =
-        await this.mappingsService.getActiveMappingByQrCodeId(qrCode.id);
+      const mapping = await this.mappingsService.getActiveMappingByQrCodeId(
+        qrCode.id,
+      );
 
-      let songInfo: any = null;
+      let songInfo: SongInfo | null = null;
       if (mapping && mapping.song) {
         // Increment play count for the song
         await this.songsService.incrementPlays(mapping.song.id);
@@ -116,18 +131,31 @@ export class QrRedirectController {
         song: songInfo,
         timestamp: new Date().toISOString(),
       });
-    } catch (error) {
-      const err = error;
-      const status = err.status || HttpStatus.INTERNAL_SERVER_ERROR;
+    } catch (error: unknown) {
+      // The 4xx-vs-5xx split for the redirect path is the same as the
+      // global LoggingInterceptor: a NotFound bubbles up as 404 (the
+      // client tried a stale/dead QR), everything else is server-side.
+      const status =
+        typeof error === 'object' &&
+        error !== null &&
+        'status' in error &&
+        typeof error.status === 'number'
+          ? (error as { status: number }).status
+          : HttpStatus.INTERNAL_SERVER_ERROR;
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
       // Never leak internal error messages; log full details server-side.
-      this.logger.error(`Error processing QR code: ${err.message}`, err.stack);
+      this.logger.error(`Error processing QR code: ${message}`, stack);
+      // Cast to the `HttpStatus` enum so the comparisons below typecheck;
+      // `status` is widened to `number` by the narrowing above.
+      const httpStatus = status as HttpStatus;
       return res.status(status).json({
         success: false,
         error:
-          status === HttpStatus.NOT_FOUND
+          httpStatus === HttpStatus.NOT_FOUND
             ? 'QR code not found'
             : 'An error occurred',
-        code: status === HttpStatus.NOT_FOUND ? 'QR_NOT_FOUND' : 'SERVER_ERROR',
+        code: httpStatus === HttpStatus.NOT_FOUND ? 'QR_NOT_FOUND' : 'SERVER_ERROR',
       });
     }
   }

@@ -11,7 +11,7 @@ import {
   Request,
   Res,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request as ExpressRequest, Response } from 'express';
 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SongsService } from './songs.service';
@@ -21,6 +21,20 @@ import { SearchSongDto } from './dto/search-song.dto';
 import { ImportSongDto } from './dto/import-song.dto';
 import { AdminGuard } from '../../common/guards/admin.guard';
 
+/**
+ * The user payload `JwtStrategy.validate()` attaches to `req.user`.
+ * We only need `.id` here, but typing it (instead of leaving the
+ * `Request` default of `any`) lets the rest of the controller avoid
+ * unsafe-assignment / unsafe-member-access lint hits.
+ *
+ * `user` is typed as required, not optional. Every route that uses
+ * `req: RequestWithUser` is wrapped in `JwtAuthGuard`, which
+ * guarantees `req.user` is set by the time the handler runs.
+ */
+interface RequestWithUser extends ExpressRequest {
+  user: { id: string };
+}
+
 @Controller('songs')
 @UseGuards(JwtAuthGuard)
 export class SongsController {
@@ -28,7 +42,7 @@ export class SongsController {
 
   @Post()
   @UseGuards(AdminGuard)
-  async create(@Body() createSongDto: CreateSongDto, @Request() req) {
+  async create(@Body() createSongDto: CreateSongDto) {
     const song = await this.songsService.create(createSongDto);
     return {
       success: true,
@@ -39,8 +53,11 @@ export class SongsController {
 
   @Post('import')
   @UseGuards(AdminGuard)
-  async importSong(@Body() importSongDto: ImportSongDto, @Request() req) {
-    const userId = req.user?.id || 'system'; // Assuming req.user exists from JwtAuthGuard
+  async importSong(
+    @Body() importSongDto: ImportSongDto,
+    @Request() req: RequestWithUser,
+  ) {
+    const userId = req.user.id;
     const song = await this.songsService.importSong(
       importSongDto.spotifyUrl,
       userId,
@@ -54,8 +71,11 @@ export class SongsController {
 
   @Post('import/bulk')
   @UseGuards(AdminGuard)
-  async importSongsBulk(@Body() body: { urls: string[] }, @Request() req) {
-    const userId = req.user?.id || 'system';
+  async importSongsBulk(
+    @Body() body: { urls: string[] },
+    @Request() req: RequestWithUser,
+  ) {
+    const userId = req.user.id;
     const result = await this.songsService.importSongsBulk(body.urls, userId);
     return {
       success: true,
@@ -66,8 +86,11 @@ export class SongsController {
 
   @Post(':id/qr/regenerate')
   @UseGuards(AdminGuard)
-  async regenerateQrCode(@Param('id') id: string, @Request() req) {
-    const userId = req.user?.id || 'system';
+  async regenerateQrCode(
+    @Param('id') id: string,
+    @Request() req: RequestWithUser,
+  ) {
+    const userId = req.user.id;
     const qrCode = await this.songsService.regenerateQrCode(id, userId);
     return {
       success: true,
