@@ -146,16 +146,15 @@ export class QrRedirectController {
       const stack = error instanceof Error ? error.stack : undefined;
       // Never leak internal error messages; log full details server-side.
       this.logger.error(`Error processing QR code: ${message}`, stack);
-      // Cast to the `HttpStatus` enum so the comparisons below typecheck;
-      // `status` is widened to `number` by the narrowing above.
-      const httpStatus = status as HttpStatus;
+      // Compare against the literal numeric value (404) rather than
+      // the `HttpStatus.NOT_FOUND` enum member — the eslint
+      // `no-unsafe-enum-comparison` rule rejects mixing `number`
+      // with an enum value, and the runtime is the same.
+      const isNotFound = status === 404;
       return res.status(status).json({
         success: false,
-        error:
-          httpStatus === HttpStatus.NOT_FOUND
-            ? 'QR code not found'
-            : 'An error occurred',
-        code: httpStatus === HttpStatus.NOT_FOUND ? 'QR_NOT_FOUND' : 'SERVER_ERROR',
+        error: isNotFound ? 'QR code not found' : 'An error occurred',
+        code: isNotFound ? 'QR_NOT_FOUND' : 'SERVER_ERROR',
       });
     }
   }

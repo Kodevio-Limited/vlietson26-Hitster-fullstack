@@ -22,6 +22,32 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { MailService } from '../mail/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
+/**
+ * Shape of the response from Spotify's `POST /api/token` endpoint
+ * (both the initial code-exchange and the refresh flow return the
+ * same envelope). Only the fields we actually read are declared.
+ */
+interface SpotifyTokenResponse {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  token_type: string;
+  scope: string;
+}
+
+/**
+ * Shape of the response from Spotify's `GET /v1/me` endpoint. Only
+ * the fields we use; the full schema has many more. `display_name`
+ * is nullable per the Spotify API; `product` is the plan tier as a
+ * free-form string.
+ */
+interface SpotifyUserProfile {
+  id: string;
+  email: string;
+  display_name: string | null;
+  product: string;
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -69,8 +95,8 @@ export class AuthService {
   }
 
   getSpotifyAuthUrl(): string {
-    const clientId = this.configService.get('spotify.clientId');
-    const redirectUri = this.configService.get('spotify.redirectUri');
+    const clientId = this.configService.get<string>('spotify.clientId');
+    const redirectUri = this.configService.get<string>('spotify.redirectUri');
     const scopes = [
       'user-read-private',
       'user-read-email',
@@ -81,7 +107,7 @@ export class AuthService {
 
     return `https://accounts.spotify.com/authorize?response_type=code&client_id=${clientId}&scope=${encodeURIComponent(
       scopes,
-    )}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    )}&redirect_uri=${encodeURIComponent(redirectUri!)}`;
   }
 
   async spotifyLogin(
@@ -107,7 +133,10 @@ export class AuthService {
       user = this.userRepository.create({
         email: spotifyUser.email,
         spotifyId: spotifyUser.id,
-        displayName: spotifyUser.display_name,
+        // Spotify may return a null `display_name`; the User column
+        // is nullable, so the TS type is `string` (not `string | null`).
+        // Coerce null to undefined for the create call.
+        displayName: spotifyUser.display_name ?? undefined,
         role: 'user',
         spotifyAccessToken: spotifyTokens.access_token,
         spotifyRefreshToken: spotifyTokens.refresh_token,
@@ -133,12 +162,23 @@ export class AuthService {
     // Generate JWT token
     const jwtToken = this.jwtService.sign(this.buildJwtPayload(user));
 
-    // Return JWT and user info (excluding sensitive tokens)
-    const { spotifyAccessToken, spotifyRefreshToken, ...safeUser } = user;
+    // Return JWT and user info (excluding sensitive tokens). The
+    // underscored names are destructured for the side effect of
+    // excluding them from `safeUser`; `void` them to satisfy
+    // unused-vars.
+    const {
+      spotifyAccessToken: _spotifyAccessToken,
+      spotifyRefreshToken: _spotifyRefreshToken,
+      ...safeUser
+    } = user;
+    void _spotifyAccessToken;
+    void _spotifyRefreshToken;
     return { jwtToken, user: safeUser };
   }
 
-  private async exchangeSpotifyCode(code: string): Promise<any> {
+  private async exchangeSpotifyCode(
+    code: string,
+  ): Promise<SpotifyTokenResponse> {
     const auth = Buffer.from(
       `${this.configService.get('spotify.clientId')}:${this.configService.get('spotify.clientSecret')}`,
     ).toString('base64');
@@ -163,26 +203,39 @@ export class AuthService {
         ),
       );
 
-      return response.data;
-    } catch (error) {
-      const err = error;
-      console.error(
-        'Spotify token exchange error:',
-        err.response?.data || err.message,
-      );
+      // `response.data` is typed `any` by axios — cast to the
+      // Spotify envelope we just declared.
+      return response.data as SpotifyTokenResponse;
+    } catch (error: unknown) {
+      // Narrow the axios error shape to extract the response body
+      // for the debug log; swallow the rest.
+      const responseBody =
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        typeof error.response === 'object'
+          ? (error as { response: { data: unknown } }).response.data
+          : undefined;
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Spotify token exchange error:', responseBody ?? message);
       throw new UnauthorizedException('Failed to authenticate with Spotify');
     }
   }
 
-  private async getSpotifyUser(accessToken: string): Promise<any> {
+  private async getSpotifyUser(
+    accessToken: string,
+  ): Promise<SpotifyUserProfile> {
     try {
       const response = await firstValueFrom(
-        this.httpService.get('https://api.spotify.com/v1/me', {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }),
+        this.httpService.get<SpotifyUserProfile>(
+          'https://api.spotify.com/v1/me',
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          },
+        ),
       );
       return response.data;
-    } catch (error) {
+    } catch {
       throw new UnauthorizedException('Failed to get Spotify user info');
     }
   }
@@ -208,7 +261,7 @@ export class AuthService {
 
     try {
       const response = await firstValueFrom(
-        this.httpService.post(
+        this.httpService.post<SpotifyTokenResponse>(
           'https://accounts.spotify.com/api/token',
           new URLSearchParams({
             grant_type: 'refresh_token',
@@ -223,17 +276,18 @@ export class AuthService {
         ),
       );
 
-      user.spotifyAccessToken = response.data.access_token;
+      const tokens = response.data;
+      user.spotifyAccessToken = tokens.access_token;
       user.spotifyTokenExpiresAt = new Date(
-        Date.now() + response.data.expires_in * 1000,
+        Date.now() + tokens.expires_in * 1000,
       );
-      if (response.data.refresh_token) {
-        user.spotifyRefreshToken = response.data.refresh_token;
+      if (tokens.refresh_token) {
+        user.spotifyRefreshToken = tokens.refresh_token;
       }
       await this.userRepository.save(user);
 
-      return response.data.access_token;
-    } catch (error) {
+      return tokens.access_token;
+    } catch {
       throw new UnauthorizedException('Failed to refresh Spotify token');
     }
   }
@@ -259,8 +313,15 @@ export class AuthService {
 
     const jwtToken = this.jwtService.sign(this.buildJwtPayload(user));
 
-    const { password, spotifyAccessToken, spotifyRefreshToken, ...safeUser } =
-      user;
+    const {
+      password: _password,
+      spotifyAccessToken: _spotifyAccessToken,
+      spotifyRefreshToken: _spotifyRefreshToken,
+      ...safeUser
+    } = user;
+    void _password;
+    void _spotifyAccessToken;
+    void _spotifyRefreshToken;
     return { jwtToken, user: safeUser };
   }
 
@@ -293,8 +354,15 @@ export class AuthService {
 
     const jwtToken = this.jwtService.sign(this.buildJwtPayload(user));
 
-    const { password, spotifyAccessToken, spotifyRefreshToken, ...safeUser } =
-      user;
+    const {
+      password: _password,
+      spotifyAccessToken: _spotifyAccessToken,
+      spotifyRefreshToken: _spotifyRefreshToken,
+      ...safeUser
+    } = user;
+    void _password;
+    void _spotifyAccessToken;
+    void _spotifyRefreshToken;
     return { jwtToken, user: safeUser };
   }
 
@@ -389,13 +457,18 @@ export class AuthService {
     await this.userRepository.save(user);
 
     const {
-      password,
-      spotifyAccessToken,
-      spotifyRefreshToken,
-      verificationCode,
-      resetToken,
+      password: _password,
+      spotifyAccessToken: _spotifyAccessToken,
+      spotifyRefreshToken: _spotifyRefreshToken,
+      verificationCode: _verificationCode,
+      resetToken: _resetToken,
       ...safeUser
     } = user;
+    void _password;
+    void _spotifyAccessToken;
+    void _spotifyRefreshToken;
+    void _verificationCode;
+    void _resetToken;
     return safeUser;
   }
 
@@ -432,9 +505,11 @@ export class AuthService {
           title: 'Password changed',
           message: 'Your account password was changed successfully.',
         });
-      } catch (error) {
+      } catch (error: unknown) {
         this.logger.warn(
-          `Failed to create password change notification: ${error.message}`,
+          `Failed to create password change notification: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
         );
       }
 

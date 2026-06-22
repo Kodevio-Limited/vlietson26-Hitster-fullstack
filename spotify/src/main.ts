@@ -85,11 +85,14 @@ async function bootstrap() {
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new LoggingInterceptor());
 
-  const port = configService.get('port') || 4002;
+  const port = configService.get<number>('port') ?? 4002;
   await app.listen(port, '0.0.0.0');
 
   logger.log(`🚀 Application is running on: http://localhost:${port}`);
   logger.log(`🔐 Environment: ${configService.get('nodeEnv')}`);
 }
 
-bootstrap();
+// `bootstrap()` is intentionally fire-and-forget; the process keeps
+// running while the HTTP server handles requests. Marking with `void`
+// silences the no-floating-promises rule.
+void bootstrap();

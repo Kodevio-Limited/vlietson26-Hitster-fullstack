@@ -65,7 +65,7 @@ export class SongsService {
       ...createSongDto,
       spotifyUrl: spotifyInfo?.spotifyUrl,
       albumImageUrl: spotifyInfo?.albumImage,
-      previewUrl: spotifyInfo?.previewUrl,
+      previewUrl: spotifyInfo?.previewUrl ?? undefined,
     });
 
     const savedSong = await this.songRepository.save(song);
@@ -122,12 +122,11 @@ export class SongsService {
     }
 
     let releaseYear = new Date().getFullYear();
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    if (spotifyInfo?.album && spotifyInfo.album.release_date) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      const yearMatch = String(spotifyInfo.album.release_date).match(
-        /^(\d{4})/,
-      );
+    // The full album envelope (with `release_date`) lives on
+    // `rawAlbum`; the slim `album` field is just the display name.
+    const releaseDate = spotifyInfo?.rawAlbum?.release_date;
+    if (releaseDate) {
+      const yearMatch = String(releaseDate).match(/^(\d{4})/);
       if (yearMatch) {
         releaseYear = parseInt(yearMatch[1], 10);
       }
@@ -142,7 +141,9 @@ export class SongsService {
       spotifyTrackId: trackId,
       spotifyUrl: spotifyInfo?.spotifyUrl,
       albumImageUrl: spotifyInfo?.albumImage,
-      previewUrl: spotifyInfo?.previewUrl,
+      // Song.previewUrl is typed `string` (not nullable); coerce
+      // the `string | null` from Spotify into undefined when absent.
+      previewUrl: spotifyInfo?.previewUrl ?? undefined,
       plays: 0,
     });
 
@@ -202,6 +203,12 @@ export class SongsService {
   }
 
   async regenerateQrCode(songId: string, userId: string): Promise<QrCode> {
+    // `userId` is accepted for API symmetry with the other write
+    // endpoints (and so callers don't have to special-case the
+    // signature) but isn't currently threaded into deactivation
+    // audit trails. Mark it intentionally consumed to silence the
+    // unused-vars rule until the audit-trail work lands.
+    void userId;
     const song = await this.findOne(songId);
 
     // Find existing active mapping
@@ -362,12 +369,19 @@ export class SongsService {
       try {
         const spotifyInfo: SpotifyTrackInfo | null =
           await this.spotifyService.getTrackById(updateSongDto.spotifyTrackId);
-        song.spotifyUrl = spotifyInfo?.spotifyUrl;
-        song.albumImageUrl = spotifyInfo?.albumImage;
-        song.previewUrl = spotifyInfo?.previewUrl;
+        song.spotifyUrl = spotifyInfo?.spotifyUrl ?? '';
+        // Song.previewUrl / albumImageUrl are typed `string` (not
+        // nullable in the entity), so coerce the `null` from
+        // Spotify to an empty string on assignment.
+        song.albumImageUrl = spotifyInfo?.albumImage ?? '';
+        song.previewUrl = spotifyInfo?.previewUrl ?? '';
         this.logger.log(`Updated Spotify info for song: ${song.name}`);
-      } catch (error: any) {
-        this.logger.warn(`Could not fetch Spotify info: ${error.message}`);
+      } catch (error: unknown) {
+        this.logger.warn(
+          `Could not fetch Spotify info: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
       }
     }
 

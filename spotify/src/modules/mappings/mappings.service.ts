@@ -13,6 +13,7 @@ import { CreateMappingDto } from './dto/create-mapping.dto';
 import { SongsService } from '../songs/songs.service';
 import { QrCodesService } from '../qr-codes/qr-codes.service';
 import { QrCardsService } from '../qr-cards/qr-cards.service';
+import { QrCard } from '../qr-cards/entities/qr-card.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CacheService } from '../../common/services/cache.service';
 
@@ -57,7 +58,7 @@ export class MappingsService {
       );
     }
 
-    let qrCard: any = null;
+    let qrCard: QrCard | null = null;
     if (createMappingDto.qrCardId) {
       qrCard = await this.qrCardsService.findOne(createMappingDto.qrCardId);
       if (qrCard.status !== 'active') {
@@ -95,10 +96,19 @@ export class MappingsService {
       return savedMapping;
     } catch (err) {
       // Concurrent insert hit the unique index. Translate to a friendly error.
-      if (err instanceof QueryFailedError && (err as any).code === '23505') {
-        throw new ConflictException(
-          'Mapping already exists for this song and QR code',
-        );
+      // `QueryFailedError.driverError.code` is the Postgres SQLSTATE
+      // string; `23505` is `unique_violation`. TypeORM's typing for
+      // `driverError` is `Record<string, unknown> | { code?: string }`,
+      // and the `in`-narrow doesn't satisfy eslint's
+      // unsafe-member-access rule on its own — assert the shape we
+      // expect at the access point.
+      if (err instanceof QueryFailedError) {
+        const driverError = err.driverError as { code?: unknown };
+        if (driverError.code === '23505') {
+          throw new ConflictException(
+            'Mapping already exists for this song and QR code',
+          );
+        }
       }
       throw err;
     }

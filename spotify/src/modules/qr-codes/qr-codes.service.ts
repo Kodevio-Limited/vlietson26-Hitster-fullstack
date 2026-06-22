@@ -204,21 +204,29 @@ export class QrCodesService {
     this.logger.log(`QR Code deleted: ${qrCode.identifier}`);
   }
 
-  async getStats(): Promise<any> {
+  async getStats(): Promise<{
+    total: number;
+    active: number;
+    inactive: number;
+    totalScans: number;
+  }> {
     const total = await this.qrCodeRepository.count();
     const active = await this.qrCodeRepository.count({
       where: { isActive: true },
     });
-    const totalScans = await this.qrCodeRepository
+    // `getRawOne<T>()` returns `T | undefined`. `SUM(scans)` is a
+    // string from the DB (pg returns numeric aggregates as strings
+    // for precision); coerce to a number for the response.
+    const totalScansRow = await this.qrCodeRepository
       .createQueryBuilder('qr_code')
       .select('SUM(scans)', 'total')
-      .getRawOne();
+      .getRawOne<{ total: string | null }>();
 
     return {
       total,
       active,
       inactive: total - active,
-      totalScans: parseInt(totalScans.total) || 0,
+      totalScans: parseInt(totalScansRow?.total ?? '0', 10) || 0,
     };
   }
 }

@@ -107,9 +107,6 @@ export class AuthController {
   @Get('me')
   async getCurrentUser(@Request() req: RequestWithUser) {
     const user = await this.authService.getCurrentUser(req.user.id);
-    // Strip sensitive fields that should never leave the server.
-    // The `void` cast tells TS we're destructuring for the side effect
-    // of excluding the listed keys, not to use the local bindings.
     const {
       password: _password,
       spotifyAccessToken: _spotifyAccessToken,

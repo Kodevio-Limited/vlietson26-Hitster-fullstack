@@ -8,6 +8,17 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 
+/**
+ * Shape of `HttpException.getResponse()` when it returns a non-string
+ * value. Nest's built-in exceptions and `class-validator` errors both
+ * follow this envelope.
+ */
+interface HttpExceptionResponseBody {
+  message?: string | string[];
+  error?: string;
+  statusCode?: number;
+}
+
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger('Exception');
@@ -25,10 +36,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
     let clientMessage: string;
     if (exception instanceof HttpException) {
       const resp = exception.getResponse();
-      clientMessage =
-        typeof resp === 'string'
-          ? resp
-          : (resp as any).message || exception.message;
+      if (typeof resp === 'string') {
+        clientMessage = resp;
+      } else {
+        const body = resp as HttpExceptionResponseBody;
+        const raw = body.message;
+        clientMessage =
+          typeof raw === 'string' ? raw : (raw ?? exception.message).toString();
+      }
       // Normalize arrays of class-validator messages into a single string.
       if (Array.isArray(clientMessage)) {
         clientMessage = clientMessage.join('; ');

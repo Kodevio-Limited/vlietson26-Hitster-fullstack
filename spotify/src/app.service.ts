@@ -1,8 +1,27 @@
 import { Injectable } from '@nestjs/common';
 
+/**
+ * Public shape of `GET /` (the AppController.getApiInfo response).
+ * Exported so the spec can `toEqual` against it without re-declaring
+ * the field list.
+ */
+export interface ApiInfo {
+  name: string;
+  description: string;
+  endpoints: {
+    api: string;
+    health: string;
+    auth: string;
+    songs: string;
+    qrCodes: string;
+    mappings: string;
+    qrRedirect: string;
+  };
+}
+
 @Injectable()
 export class AppService {
-  getApiInfo() {
+  getApiInfo(): ApiInfo {
     return {
       name: 'OV Bouwradio API',
       description:
