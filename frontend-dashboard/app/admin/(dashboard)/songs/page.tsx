@@ -1,4 +1,5 @@
 "use client";
+import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -12,7 +13,6 @@ import {
     useUpdateSong,
 } from "@/lib/mutations/songs";
 import { songQueries } from "@/lib/queries/songs";
-import { exportSongsCsv } from "@/lib/api/admin-dashboard";
 import { ChevronDown, Download, FileDown, Loader2, Plus, Search, Upload } from "lucide-react";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -36,6 +36,7 @@ export function SkeletonTable() {
 
 import dynamic from "next/dynamic";
 import { DataTable } from "@/components/ui/data-table";
+import { exportSongsXlsx } from "@/lib/api/admin-dashboard";
 
 const AddSongDialogContent = dynamic(() => import("@/components/dashboard/add-song-dialog-content").then((m) => m.AddSongDialogContent));
 const DeleteSongDialogContent = dynamic(() => import("@/components/dashboard/delete-song-dialog-content").then((m) => m.DeleteSongDialogContent));
@@ -216,22 +217,53 @@ function SongsPageContent() {
     const [isImporting, setIsImporting] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    /**
+     * Parse the uploaded spreadsheet and extract Spotify track URLs
+     * from every cell. We accept any cell that matches the Spotify
+     * track URL pattern — column headers and any free-form notes are
+     * ignored, only the URLs themselves are sent to the backend.
+     *
+     * `sheet_to_json` with `header: 1` returns each row as an array
+     * of cell values. Then we flatten and regex-match.
+     */
+    const extractSpotifyUrlsFromWorkbook = (workbook: XLSX.WorkBook): string[] => {
+        const urlRegex = /https?:\/\/open\.spotify\.com\/track\/[a-zA-Z0-9]+/g;
+        const found = new Set<string>();
+        for (const sheetName of workbook.SheetNames) {
+            const sheet = workbook.Sheets[sheetName];
+            if (!sheet) continue;
+            const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+                header: 1,
+                defval: "",
+            });
+            for (const row of rows) {
+                if (!Array.isArray(row)) continue;
+                for (const cell of row) {
+                    if (typeof cell !== "string") continue;
+                    const matches = cell.match(urlRegex);
+                    if (matches) {
+                        for (const url of matches) found.add(url);
+                    }
+                }
+            }
+        }
+        return Array.from(found);
+    };
+
     const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
 
         setIsImporting(true);
-        const toastId = toast.loading("Parsing CSV and importing songs...");
+        const toastId = toast.loading("Parsing spreadsheet and importing songs...");
 
         try {
-            const text = await file.text();
-            const urlRegex = /https?:\/\/open\.spotify\.com\/track\/[a-zA-Z0-9]+/g;
-            const matches = text.match(urlRegex) || [];
-
-            const uniqueUrls = Array.from(new Set(matches));
+            const buffer = await file.arrayBuffer();
+            const workbook = XLSX.read(buffer, { type: "array" });
+            const uniqueUrls = extractSpotifyUrlsFromWorkbook(workbook);
 
             if (uniqueUrls.length === 0) {
-                toast.error("No valid Spotify URLs found in the CSV.", { id: toastId });
+                toast.error("No valid Spotify URLs found in the file.", { id: toastId });
                 return;
             }
 
@@ -252,42 +284,49 @@ function SongsPageContent() {
         }
     };
 
-    const handleExportCsv = async () => {
-        const toastId = toast.loading("Generating CSV export...");
+    const handleExportXlsx = async () => {
+        const toastId = toast.loading("Generating Excel export...");
         try {
-            await exportSongsCsv();
-            toast.success("CSV Export successful!", { id: toastId });
+            await exportSongsXlsx();
+            toast.success("Excel export successful!", { id: toastId });
         } catch (error) {
-            const message = error instanceof Error ? error.message : "Failed to export CSV";
+            const message = error instanceof Error ? error.message : "Failed to export Excel";
             toast.error(message, { id: toastId });
         }
     };
 
     /**
-     * Download a starter CSV the user can fill in with Spotify track
-     * URLs. Mirrors the `handleDownloadQr` pattern: build a Blob,
-     * create a one-shot `<a download>`, click it, revoke the object
-     * URL. No backend round-trip — the template is a fixed string.
+     * Download a starter `.xlsx` workbook with one column
+     * (`spotify_url`) and a few example rows. Built entirely in the
+     * browser — no backend round-trip — and downloaded via the same
+     * `<a download>` blob trick used by `handleDownloadQr`.
      *
-     * The parser in `handleFileUpload` (above) only matches lines
-     * against the Spotify URL regex, so the `spotify_url` header
-     * row is documentation only — it won't be picked up as a track.
-     * The two example rows give the user something to delete /
-     * replace rather than starting from an empty file.
+     * The `spotify_url` header is documentation only: the parser in
+     * `extractSpotifyUrlsFromWorkbook` matches the Spotify URL regex
+     * against every cell, so the header text doesn't accidentally
+     * become a track. Users get something to delete / replace
+     * rather than staring at an empty sheet.
      */
     const handleDownloadTemplate = () => {
-        const csvContent = [
-            "spotify_url",
-            "https://open.spotify.com/track/4iV5W9uYEdYUVa79Axb7Rh",
-            "https://open.spotify.com/track/1mea3bSkSGXuIRvnydlB5b",
-            "https://open.spotify.com/track/6rqhFgbbKwnb9MLmUQDhG6",
-        ].join("\n");
-
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
+        const worksheet = XLSX.utils.aoa_to_sheet([
+            ["spotify_url"],
+            ["https://open.spotify.com/track/4iV5W9uYEdYUVa79Axb7Rh"],
+            ["https://open.spotify.com/track/1mea3bSkSGXuIRvnydlB5b"],
+            ["https://open.spotify.com/track/6rqhFgbbKwnb9MLmUQDhG6"],
+        ]);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Songs");
+        const arrayBuffer = XLSX.write(workbook, {
+            bookType: "xlsx",
+            type: "array",
+        });
+        const blob = new Blob([arrayBuffer], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        });
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = "songs_import_template.csv";
+        link.download = "songs_import_template.xlsx";
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -471,7 +510,7 @@ function SongsPageContent() {
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                             <input
                                 type="file"
-                                accept=".csv"
+                                accept=".xlsx,.xls"
                                 className="hidden"
                                 ref={fileInputRef}
                                 onChange={(e) => void handleFileUpload(e)}
@@ -497,10 +536,10 @@ function SongsPageContent() {
                             <Button
                                 variant="outline"
                                 className="h-11.5 rounded-[5px] px-3 text-[16px] font-medium"
-                                onClick={() => void handleExportCsv()}
+                                onClick={() => void handleExportXlsx()}
                             >
                                 <Download className="mr-2 size-4" />
-                                Export CSV
+                                Export Excel
                             </Button>
 
                             <DialogTrigger asChild>

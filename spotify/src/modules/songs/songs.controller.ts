@@ -116,16 +116,19 @@ export class SongsController {
     };
   }
 
-  @Get('export/csv')
+  @Get('export/xlsx')
   @UseGuards(AdminGuard)
-  async exportCsv(@Res() res: Response) {
-    const csvData = await this.songsService.exportSongsToCsv();
-    res.setHeader('Content-Type', 'text/csv');
+  async exportXlsx(@Res() res: Response) {
+    const buffer = await this.songsService.exportSongsToXlsx();
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
     res.setHeader(
       'Content-Disposition',
-      'attachment; filename=songs_export.csv',
+      'attachment; filename=songs_export.xlsx',
     );
-    res.send(csvData);
+    res.send(buffer);
   }
 
   @Get()

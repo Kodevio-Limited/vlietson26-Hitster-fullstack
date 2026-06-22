@@ -19,6 +19,7 @@ import { QrCodesService } from '../qr-codes/qr-codes.service';
 import { QrCode } from '../qr-codes/entities/qr-code.entity';
 import { MappingsService } from '../mappings/mappings.service';
 import { randomUUID } from 'crypto';
+import * as XLSX from 'xlsx';
 
 @Injectable()
 export class SongsService {
@@ -462,32 +463,43 @@ export class SongsService {
     );
   }
 
-  async exportSongsToCsv(): Promise<string> {
+  async exportSongsToXlsx(): Promise<Buffer> {
     const songs = await this.songRepository.find({
       order: { createdAt: 'DESC' },
     });
 
-    const header = [
-      'ID',
-      'Name',
-      'Artist',
-      'Release Year',
-      'Spotify Track ID',
-      'Spotify URL',
-      'Plays',
-      'Created At',
+    // Build an array-of-arrays worksheet. SheetJS treats each
+    // top-level array as a row; cell types are inferred.
+    const aoa: (string | number)[][] = [
+      [
+        'ID',
+        'Name',
+        'Artist',
+        'Release Year',
+        'Spotify Track ID',
+        'Spotify URL',
+        'Plays',
+        'Created At',
+      ],
+      ...songs.map((song) => [
+        song.id,
+        song.name,
+        song.artist,
+        song.releaseYear,
+        song.spotifyTrackId,
+        song.spotifyUrl,
+        song.plays,
+        song.createdAt.toISOString(),
+      ]),
     ];
-    const rows = songs.map((song) => [
-      song.id,
-      `"${song.name.replace(/"/g, '""')}"`,
-      `"${song.artist.replace(/"/g, '""')}"`,
-      song.releaseYear,
-      song.spotifyTrackId,
-      song.spotifyUrl,
-      song.plays,
-      song.createdAt.toISOString(),
-    ]);
 
-    return [header.join(','), ...rows.map((row) => row.join(','))].join('\n');
+    const worksheet = XLSX.utils.aoa_to_sheet(aoa);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Songs');
+
+    // `bookType: 'xlsx'` + `type: 'buffer'` returns a Node `Buffer`
+    // ready to send as the response body. The standard MIME type for
+    // `.xlsx` is the long Open Office XML one.
+    return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
   }
 }

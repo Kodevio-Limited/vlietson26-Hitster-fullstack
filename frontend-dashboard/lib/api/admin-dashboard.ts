@@ -149,15 +149,15 @@ export async function importBulkSongs(urls: string[]): Promise<{ successful: num
     return response.data.data;
 }
 
-export async function exportSongsCsv(): Promise<void> {
-    const response = await apiClient.get("/songs/export/csv", {
+export async function exportSongsXlsx(): Promise<void> {
+    const response = await apiClient.get("/songs/export/xlsx", {
         responseType: "blob",
     });
 
     const url = window.URL.createObjectURL(new Blob([response.data]));
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute("download", "songs_export.csv");
+    link.setAttribute("download", "songs_export.xlsx");
     document.body.appendChild(link);
     link.click();
     link.parentNode?.removeChild(link);
